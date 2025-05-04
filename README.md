@@ -1,12 +1,33 @@
-# React + Vite
+# 🎬 Cinematic Recall
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A turn-based memory game where you and the computer alternate naming movies from an actor's filmography. Built with FastAPI (Python) and React (Vite), using data from the TMDb API.
 
-Currently, two official plugins are available:
+![screenshot](https://via.placeholder.com/800x400.png?text=Cinematic+Recall+Preview)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## Expanding the ESLint configuration
+## 🧠 Game Overview
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Choose an actor (currently defaults to Tom Hanks)
+- Pick a difficulty: easy, medium, or hard
+- You and the computer alternate naming valid movies
+- The computer’s knowledge is limited based on difficulty
+- You win if the computer runs out of movies first
+
+---
+
+## 🛠 Tech Stack
+
+| Frontend  | Backend  | External API |
+|-----------|----------|--------------|
+| React + Vite | FastAPI (Python 3.9+) | [TMDb](https://www.themoviedb.org/documentation/api) |
+
+---
+
+## 🚀 Local Development
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/salbano210/cinematic_recall.git
+cd cinematic_recall
