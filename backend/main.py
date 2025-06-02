@@ -16,6 +16,7 @@ from services.tmdb_utils import search_actor_by_name, get_actor_filmography
 from services.tmdb_utils import search_actor_by_name
 from fastapi import Query
 import asyncio
+from rapidfuzz import process, fuzz
 from dotenv import load_dotenv
 import os
 import uuid
@@ -134,30 +135,39 @@ async def play_turn(
         if m["title"].lower() not in used_titles
     ]
     
+    # Debug prints to help inspect the matching logic
+    print("🎯 Player submitted:", player_movie)
+    print("🎯 Remaining titles in pool:", remaining_titles)
 
-    # Fuzzy match the player input
-    match_result = process.extractOne(player_movie, remaining_titles, score_cutoff=70)
+# Normalize and map lowercase → original
+    title_map = {title.lower(): title for title in remaining_titles}
+    normalized_titles = list(title_map.keys())
+
+    print("🎯 Player submitted:", player_movie)
+    print("🎯 Normalized titles:", normalized_titles)
+
+# Fuzzy match against normalized list
+    match_result = process.extractOne(
+    player_movie.lower(),
+    normalized_titles,
+    scorer=fuzz.WRatio,
+    score_cutoff=70
+)
+
+    print("🧪 Match result:", match_result)
 
     if not match_result:
-        if not remaining_titles:
-            return {
-                "result": "Game over — no remaining valid guesses. You lose.",
-                "remaining_movies": 0
-            }
         return {"error": "Movie not recognized — try spelling it more closely"}
 
+    matched_title = title_map[match_result[0]]
 
-    matched_title = match_result[0]
+    # Check for reuse
     if matched_title.lower() in used_titles:
         return {"error": "That movie has already been used!"}
 
-    # Prevent reuse just in case
-    if matched_title.lower() in used_titles:
-        return {"error": "That movie has already been used!"}
-
-    # Record the player move
     session["used_titles"].append(matched_title)
     session["turn"] = "computer"
+
 
     # Rank all movies by popularity
     ranked_movies = sorted(all_movies, key=lambda m: m.get("popularity", 0), reverse=True)

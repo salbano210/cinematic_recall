@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import axios from 'axios';
 
@@ -32,6 +33,7 @@ function App() {
           player_movie: playerInput
         }
       });
+      console.log("Backend response:", res.data);
       setTurnResult(res.data);
       setPlayerInput("");
       setError(null);
