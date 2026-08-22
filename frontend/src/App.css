@@ -172,6 +172,7 @@ body {
   text-align: center;
   line-height: 1.2;
   margin-bottom: 3px;
+  color: #1a1a2e;
 }
 
 .poster-image {
@@ -183,7 +184,7 @@ body {
 }
 
 .percentage {
-  color: #f0c929;
+  color: #1a1a2e;
   font-size: 0.7rem;
   font-weight: bold;
 }
