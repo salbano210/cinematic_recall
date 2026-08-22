@@ -179,6 +179,33 @@ async def play_turn(
         "total": len(ranked_movies)
     }
 
+@app.post("/give-up")
+async def give_up(game_id: str = Query(...)):
+    if game_id not in game_sessions:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    session = game_sessions[game_id]
+    ranked_movies = session["ranked_movies"]
+    filled_ranks = session["filled_ranks"]
+
+    # Return all movies the player missed
+    missed = [
+        {
+            "title": m["title"],
+            "rank": m["rank"],
+            "percentage": m["percentage"],
+            "year": m.get("year")
+        }
+        for m in ranked_movies
+        if m["rank"] not in filled_ranks
+    ]
+
+    return {
+        "missed": missed,
+        "filled_count": len(filled_ranks),
+        "total": len(ranked_movies)
+    }
+
 @app.get("/game-state")
 def game_state(game_id: str = Query(...)):
     if game_id not in game_sessions:

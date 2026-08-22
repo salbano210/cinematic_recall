@@ -8,6 +8,8 @@ function App() {
   const [gameId, setGameId] = useState(null);
   const [playerInput, setPlayerInput] = useState("");
   const [filledRanks, setFilledRanks] = useState({});
+  const [missedRanks, setMissedRanks] = useState({});
+  const [gaveUp, setGaveUp] = useState(false);
   const [totalMovies, setTotalMovies] = useState(0);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -72,6 +74,29 @@ function App() {
     }
   };
 
+  const giveUp = async () => {
+    try {
+      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/give-up`, null, {
+        params: { game_id: gameId }
+      });
+
+      const missed = {};
+      (res.data.missed || []).forEach(m => {
+        missed[m.rank] = {
+          title: m.title,
+          percentage: m.percentage,
+          year: m.year
+        };
+      });
+      setMissedRanks(missed);
+      setGaveUp(true);
+      setError(null);
+    } catch (err) {
+      console.error("Give up error:", err);
+      setError("Failed to reveal answers.");
+    }
+  };
+
   return (
     <div className="app">
       <div className="container">
@@ -127,20 +152,22 @@ function App() {
               {Array.from({ length: totalMovies }).map((_, index) => {
                 const rank = index + 1;
                 const filled = filledRanks[rank];
+                const missed = missedRanks[rank];
+                const revealed = filled || missed;
                 return (
                   <div
                     key={rank}
-                    className={`square ${filled ? 'filled' : ''}`}
+                    className={`square ${filled ? 'filled' : ''} ${missed ? 'missed' : ''}`}
                   >
-                    {filled ? (
+                    {revealed ? (
                       <>
-                        <span className="movie-title" title={filled.title}>
-                          {filled.title}
+                        <span className="movie-title" title={revealed.title}>
+                          {revealed.title}
                         </span>
-                        {filled.year && (
-                          <span className="movie-year">({filled.year})</span>
+                        {revealed.year && (
+                          <span className="movie-year">({revealed.year})</span>
                         )}
-                        <span className="percentage">{filled.percentage}%</span>
+                        <span className="percentage">{revealed.percentage}%</span>
                       </>
                     ) : (
                       <span className="rank-number">{rank}</span>
@@ -149,6 +176,12 @@ function App() {
                 );
               })}
             </div>
+
+            {!gaveUp && (
+              <button onClick={giveUp} className="btn btn-giveup">
+                Give Up
+              </button>
+            )}
 
             {error && (
               <div className="error">
