@@ -92,13 +92,18 @@ async def start_game(
         # Get movie poster URL
         poster_path = movie.get("poster_path")
         poster_url = f"{TMDB_IMAGE_BASE_URL}/w92{poster_path}" if poster_path else None
-        
+
+        # Extract release year (TMDB release_date is "YYYY-MM-DD")
+        release_date = movie.get("release_date") or ""
+        year = release_date[:4] if release_date else None
+
         ranked_movies.append({
             "title": movie["title"],
             "id": movie["id"],
             "rank": rank,
             "percentage": percentage,
-            "poster_url": poster_url
+            "poster_url": poster_url,
+            "year": year
         })
 
     game_id = str(uuid.uuid4())
@@ -167,7 +172,8 @@ async def play_turn(
             "title": movie_entry["title"],
             "rank": movie_entry["rank"],
             "percentage": movie_entry["percentage"],
-            "poster_url": movie_entry["poster_url"]
+            "poster_url": movie_entry["poster_url"],
+            "year": movie_entry.get("year")
         },
         "filled_count": len(session["filled_ranks"]),
         "total": len(ranked_movies)

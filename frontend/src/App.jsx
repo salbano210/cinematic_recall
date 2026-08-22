@@ -58,7 +58,7 @@ function App() {
           [movie.rank]: {
             title: movie.title,
             percentage: movie.percentage,
-            poster_url: movie.poster_url
+            year: movie.year
           }
         }));
       }
@@ -134,16 +134,11 @@ function App() {
                   >
                     {filled ? (
                       <>
-                        {filled.poster_url ? (
-                          <img 
-                            src={filled.poster_url} 
-                            alt={filled.title}
-                            className="poster-image"
-                          />
-                        ) : (
-                          <span className="movie-title" title={filled.title}>
-                            {filled.title.length > 12 ? filled.title.substring(0, 12) + '...' : filled.title}
-                          </span>
+                        <span className="movie-title" title={filled.title}>
+                          {filled.title}
+                        </span>
+                        {filled.year && (
+                          <span className="movie-year">({filled.year})</span>
                         )}
                         <span className="percentage">{filled.percentage}%</span>
                       </>
