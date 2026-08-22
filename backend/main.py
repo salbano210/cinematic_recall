@@ -12,7 +12,7 @@ app.add_middleware(
 )
 print("✅ CORS middleware added")
 
-from services.tmdb_utils import search_actor_by_name, get_actor_filmography
+from services.tmdb_utils import search_actor_by_name, get_actor_filmography, get_actor_details
 from services.tmdb_utils import search_actor_by_name
 from fastapi import Query
 import asyncio
@@ -68,7 +68,13 @@ async def get_daily_actor():
     day_of_year = datetime.datetime.utcnow().timetuple().tm_yday
     actor_id = actor_list[day_of_year % len(actor_list)]
     
-    return {"actor_id": actor_id}
+    # Get actor name
+    actor_name = await get_actor_details(actor_id)
+    
+    return {
+        "actor_id": actor_id,
+        "actor_name": actor_name
+    }
 
 @app.get("/search-actor")
 async def search_actor(name: str = Query(..., description="Name of the actor or actress to search")):
