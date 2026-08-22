@@ -4,6 +4,7 @@ import './App.css';
 
 function App() {
   const [actorName, setActorName] = useState(null);
+  const [actorImage, setActorImage] = useState(null);
   const [gameId, setGameId] = useState(null);
   const [playerInput, setPlayerInput] = useState("");
   const [filledRanks, setFilledRanks] = useState({});
@@ -18,8 +19,10 @@ function App() {
       const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/daily-actor`);
       const actorId = res.data.actor_id;
       const name = res.data.actor_name || `Actor #${actorId}`;
+      const image = res.data.actor_image;
       
       setActorName(name);
+      setActorImage(image);
       
       const gameRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/start-game`, null, {
         params: {
@@ -54,7 +57,8 @@ function App() {
           ...prev,
           [movie.rank]: {
             title: movie.title,
-            percentage: movie.percentage
+            percentage: movie.percentage,
+            poster_url: movie.poster_url
           }
         }));
       }
@@ -89,6 +93,13 @@ function App() {
         {gameId && (
           <div>
             <div className="card">
+              {actorImage && (
+                <img 
+                  src={actorImage} 
+                  alt={actorName}
+                  className="actor-image"
+                />
+              )}
               <p className="label">Name movies by:</p>
               <p className="actor-name">{actorName}</p>
               <p className="count">{totalMovies} total movies</p>
@@ -123,9 +134,17 @@ function App() {
                   >
                     {filled ? (
                       <>
-                        <span className="movie-title" title={filled.title}>
-                          {filled.title.length > 12 ? filled.title.substring(0, 12) + '...' : filled.title}
-                        </span>
+                        {filled.poster_url ? (
+                          <img 
+                            src={filled.poster_url} 
+                            alt={filled.title}
+                            className="poster-image"
+                          />
+                        ) : (
+                          <span className="movie-title" title={filled.title}>
+                            {filled.title.length > 12 ? filled.title.substring(0, 12) + '...' : filled.title}
+                          </span>
+                        )}
                         <span className="percentage">{filled.percentage}%</span>
                       </>
                     ) : (

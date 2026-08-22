@@ -26,6 +26,7 @@ game_sessions = {}
 load_dotenv()
 
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p"
 
 @app.get("/")
 def read_root():
@@ -58,11 +59,12 @@ async def get_daily_actor():
     
     day_of_year = datetime.datetime.utcnow().timetuple().tm_yday
     actor_id = actor_list[day_of_year % len(actor_list)]
-    actor_name = await get_actor_details(actor_id)
+    actor_details = await get_actor_details(actor_id)
     
     return {
         "actor_id": actor_id,
-        "actor_name": actor_name
+        "actor_name": actor_details["name"],
+        "actor_image": actor_details["profile_url"]
     }
 
 @app.post("/start-game")
@@ -86,11 +88,17 @@ async def start_game(
         total = len(available_movies)
         # Top movies = higher percentage
         percentage = max(5, int(((total - rank_idx) / total) * 100))
+        
+        # Get movie poster URL
+        poster_path = movie.get("poster_path")
+        poster_url = f"{TMDB_IMAGE_BASE_URL}/w92{poster_path}" if poster_path else None
+        
         ranked_movies.append({
             "title": movie["title"],
             "id": movie["id"],
             "rank": rank,
-            "percentage": percentage
+            "percentage": percentage,
+            "poster_url": poster_url
         })
 
     game_id = str(uuid.uuid4())
@@ -98,7 +106,7 @@ async def start_game(
     game_sessions[game_id] = {
         "actor_id": actor_id,
         "ranked_movies": ranked_movies,
-        "filled_ranks": set()  # Track which ranks have been filled
+        "filled_ranks": set()
     }
 
     return {
@@ -135,8 +143,6 @@ async def play_turn(
     if not match_result:
         return {"error": "Movie not recognized — try spelling it more closely"}
 
-    matched_title = title_map[player_movie.lower()]["title"] if player_movie.lower() in title_map else title_map.get(match_result[0], {}).get("matched", match_result[0])
-    
     # Find the actual movie entry
     movie_entry = None
     for m in ranked_movies:
@@ -160,7 +166,8 @@ async def play_turn(
         "movie": {
             "title": movie_entry["title"],
             "rank": movie_entry["rank"],
-            "percentage": movie_entry["percentage"]
+            "percentage": movie_entry["percentage"],
+            "poster_url": movie_entry["poster_url"]
         },
         "filled_count": len(session["filled_ranks"]),
         "total": len(ranked_movies)
