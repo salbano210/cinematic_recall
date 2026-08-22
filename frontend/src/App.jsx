@@ -42,6 +42,22 @@ function App() {
     setLoading(false);
   };
 
+  const resetGame = () => {
+    setGameId(null);
+    setActorName(null);
+    setActorImage(null);
+    setFilledRanks({});
+    setMissedRanks({});
+    setGaveUp(false);
+    setPlayerInput("");
+    setTotalMovies(0);
+  };
+
+  const handleSessionExpired = () => {
+    resetGame();
+    setError("Your session expired (the server was updated). Click 'Reveal Today\'s Actor' to start fresh!");
+  };
+
   const playTurn = async () => {
     if (!playerInput.trim()) return;
     
@@ -69,6 +85,10 @@ function App() {
       setError(null);
     } catch (err) {
       console.error("Turn error:", err);
+      if (err.response?.status === 404 || err.response?.data?.detail === "Game not found") {
+        handleSessionExpired();
+        return;
+      }
       const apiMessage = err.response?.data?.error || err.response?.data?.detail;
       setError(apiMessage || "Turn failed");
     }
@@ -93,6 +113,10 @@ function App() {
       setError(null);
     } catch (err) {
       console.error("Give up error:", err);
+      if (err.response?.status === 404 || err.response?.data?.detail === "Game not found") {
+        handleSessionExpired();
+        return;
+      }
       setError("Failed to reveal answers.");
     }
   };
