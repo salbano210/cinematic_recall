@@ -166,6 +166,11 @@ function App() {
               <button onClick={playTurn} className="btn btn-success">
                 Submit
               </button>
+              {!gaveUp && (
+                <button onClick={giveUp} className="btn btn-giveup">
+                  Give Up
+                </button>
+              )}
             </div>
 
             <div className="score">
@@ -200,12 +205,6 @@ function App() {
                 );
               })}
             </div>
-
-            {!gaveUp && (
-              <button onClick={giveUp} className="btn btn-giveup">
-                Give Up
-              </button>
-            )}
 
             {error && (
               <div className="error">
