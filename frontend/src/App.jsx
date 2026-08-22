@@ -2,6 +2,15 @@ import { useState } from 'react';
 import axios from 'axios';
 import './App.css';
 
+const getTitleClass = (title) => {
+  if (!title) return '';
+  const len = title.length;
+  if (len <= 10) return 'title-short';
+  if (len <= 20) return 'title-medium';
+  if (len <= 32) return 'title-long';
+  return 'title-xlong';
+};
+
 function App() {
   const [actorName, setActorName] = useState(null);
   const [actorImage, setActorImage] = useState(null);
@@ -190,7 +199,7 @@ function App() {
                   >
                     {revealed ? (
                       <>
-                        <span className="movie-title" title={revealed.title}>
+                        <span className={`movie-title ${getTitleClass(revealed.title)}`} title={revealed.title}>
                           {revealed.title}
                         </span>
                         {revealed.year && (

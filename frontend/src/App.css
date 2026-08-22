@@ -154,12 +154,13 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 5px;
+  padding: 6px 4px;
   font-size: 0.75rem;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   transition: all 0.3s;
   overflow: hidden;
+  container-type: inline-size;
 }
 
 .square.filled {
@@ -185,29 +186,48 @@ body {
 
 .movie-title {
   font-weight: bold;
-  font-size: 1.75rem;
   text-align: center;
-  line-height: 1.15;
+  line-height: 1.12;
   margin-bottom: 2px;
   color: #1a1a2e;
+  word-break: break-word;
+  hyphens: auto;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  word-break: break-word;
+  font-size: clamp(0.6rem, 10cqw, 1.2rem);
+}
+
+.movie-title.title-short {
+  font-size: clamp(0.72rem, 12.5cqw, 1.45rem);
+}
+
+.movie-title.title-medium {
+  font-size: clamp(0.6rem, 10cqw, 1.15rem);
+}
+
+.movie-title.title-long {
+  font-size: clamp(0.5rem, 8cqw, 0.95rem);
+}
+
+.movie-title.title-xlong {
+  font-size: clamp(0.42rem, 6.8cqw, 0.82rem);
 }
 
 .movie-year {
-  font-size: 0.65rem;
+  font-size: clamp(0.48rem, 6cqw, 0.75rem);
   color: #1a1a2e;
   opacity: 0.75;
   margin-bottom: 2px;
+  line-height: 1;
 }
 
 .percentage {
   color: #1a1a2e;
-  font-size: 0.7rem;
+  font-size: clamp(0.52rem, 6.5cqw, 0.8rem);
   font-weight: bold;
+  line-height: 1;
 }
 
 .error {
@@ -222,10 +242,17 @@ body {
 @media (max-width: 600px) {
   .grid {
     grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .square {
+    padding: 4px 2px;
   }
   
   .input-group {
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
     align-items: center;
   }
   
