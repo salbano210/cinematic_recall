@@ -134,6 +134,18 @@ body {
   border-color: #f0c929;
 }
 
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15%, 45%, 75% { transform: translateX(-6px); }
+  30%, 60%, 90% { transform: translateX(6px); }
+}
+
+.input.shake-error {
+  animation: shake 0.5s ease-in-out;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6) !important;
+}
+
 .score {
   font-size: 1.5rem;
   font-weight: bold;

@@ -22,6 +22,14 @@ function App() {
   const [totalMovies, setTotalMovies] = useState(0);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isShaking, setIsShaking] = useState(false);
+
+  const triggerShake = () => {
+    setIsShaking(true);
+    setTimeout(() => {
+      setIsShaking(false);
+    }, 600);
+  };
 
   const revealActor = async () => {
     setLoading(true);
@@ -88,16 +96,19 @@ function App() {
             year: movie.year
           }
         }));
+        setPlayerInput("");
+        setError(null);
+      } else if (res.data.error) {
+        triggerShake();
+        setError(res.data.error);
       }
-      
-      setPlayerInput("");
-      setError(null);
     } catch (err) {
       console.error("Turn error:", err);
       if (err.response?.status === 404 || err.response?.data?.detail === "Game not found") {
         handleSessionExpired();
         return;
       }
+      triggerShake();
       const apiMessage = err.response?.data?.error || err.response?.data?.detail;
       setError(apiMessage || "Turn failed");
     }
@@ -168,9 +179,12 @@ function App() {
                 type="text"
                 placeholder="Enter a movie title..."
                 value={playerInput}
-                onChange={(e) => setPlayerInput(e.target.value)}
+                onChange={(e) => {
+                  setPlayerInput(e.target.value);
+                  if (error) setError(null);
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && playTurn()}
-                className="input"
+                className={`input ${isShaking ? 'shake-error' : ''}`}
               />
               <button onClick={playTurn} className="btn btn-success">
                 Submit
