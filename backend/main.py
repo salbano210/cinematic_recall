@@ -163,7 +163,7 @@ async def play_turn(
         player_movie.lower(),
         unused_lower,
         scorer=fuzz.WRatio,
-        score_cutoff=70
+        score_cutoff=90  # Increased from 70 to require much closer matches
     )
 
     if not match_result:
