@@ -46,6 +46,18 @@ body {
   color: #ccc;
 }
 
+.slow-load-note {
+  margin-top: 16px;
+  font-size: 0.95rem;
+  color: #f0c36d;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .btn {
   padding: 15px 30px;
   font-size: 1.1rem;

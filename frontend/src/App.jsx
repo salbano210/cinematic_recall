@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
 
@@ -23,6 +23,16 @@ function App() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isShaking, setIsShaking] = useState(false);
+  const [slowLoad, setSlowLoad] = useState(false);
+
+  // Warm up the backend as soon as the page loads. Render's free tier
+  // sleeps after 15 min of inactivity and takes 30-50s to cold-start,
+  // so ping it in the background before the user clicks anything.
+  useEffect(() => {
+    axios.get(`${import.meta.env.VITE_BACKEND_URL}/`).catch(() => {
+      // Ignore errors — this is just a wake-up ping
+    });
+  }, []);
 
   const triggerShake = () => {
     setIsShaking(true);
@@ -34,6 +44,9 @@ function App() {
   const revealActor = async () => {
     setLoading(true);
     setError(null);
+    setSlowLoad(false);
+    // If the request takes more than 3s the server is probably cold-starting
+    const slowTimer = setTimeout(() => setSlowLoad(true), 3000);
     try {
       const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/daily-actor`);
       const actorId = res.data.actor_id;
@@ -56,6 +69,8 @@ function App() {
       console.error("Error:", err);
       setError("Failed to reveal actor or start game.");
     }
+    clearTimeout(slowTimer);
+    setSlowLoad(false);
     setLoading(false);
   };
 
@@ -156,6 +171,11 @@ function App() {
             >
               {loading ? 'Loading...' : 'Reveal Today\'s Actor'}
             </button>
+            {loading && slowLoad && (
+              <p className="slow-load-note">
+                Waking up the game server — first load can take up to a minute...
+              </p>
+            )}
           </div>
         )}
 
