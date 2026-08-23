@@ -34,7 +34,7 @@ TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p"
 # - Set to a TMDb Person ID (e.g. 6193 for Leonardo DiCaprio) to force that actor.
 # - Set to an actor's name (e.g. "Harrison Ford") to automatically search & use them.
 # ==============================================================================
-ACTOR_OVERRIDE = None
+ACTOR_OVERRIDE = "Russell Crowe"
 
 @app.get("/")
 def read_root():
@@ -46,13 +46,13 @@ async def get_daily_actor():
         if isinstance(ACTOR_OVERRIDE, int):
             actor_id = ACTOR_OVERRIDE
         elif isinstance(ACTOR_OVERRIDE, str):
-            # If a name like "Tom Cruise" is provided, search TMDb
+            # If a name like "Russell Crowe" is provided, search TMDb
             search_results = await search_actor_by_name(ACTOR_OVERRIDE)
             if not search_results:
                 raise HTTPException(status_code=404, detail=f"Actor '{ACTOR_OVERRIDE}' not found on TMDb")
             actor_id = search_results[0]["id"]
         else:
-            actor_id = int('Russel Crowe')
+            actor_id = int(ACTOR_OVERRIDE)
     else:
         actor_list = [
             31,     # Tom Hanks
