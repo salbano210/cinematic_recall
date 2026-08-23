@@ -140,6 +140,55 @@ async def start_game(
         "num_available_movies": len(available_movies)
     }
 
+LEADING_ARTICLES = ("the ", "a ", "an ")
+
+
+def _strip_article(title: str) -> str:
+    for article in LEADING_ARTICLES:
+        if title.startswith(article):
+            return title[len(article):]
+    return title
+
+
+def find_title_match(guess: str, choices) -> str | None:
+    """Match a player's guess against the remaining movie titles.
+
+    Two tiers, both deliberately strict so a stray keystroke can never
+    auto-fill an unrelated title (the old WRatio scorer gave 'i' a 90+
+    partial-substring score against 'Unhinged'):
+
+    Tier 1 - exact match, ignoring a leading 'the/a/an' on either side
+             ('mummy' -> 'The Mummy').
+    Tier 2 - typo-tolerant full-title match: token_sort_ratio >= 85 AND
+             the guess must cover at least 70% of the matched title's
+             length. This accepts real typos ('gladiater' -> 'Gladiator',
+             'beatiful mind' -> 'A Beautiful Mind') but rejects fragments
+             ('i', 'b', 'gla', 'beaut', 'yuma', 'guys', ...).
+    """
+    # Tier 1: exact (also try stripping leading articles)
+    if guess in choices:
+        return guess
+    for choice in choices:
+        if _strip_article(choice) == guess:
+            return choice
+        if choice == _strip_article(guess):
+            return choice
+
+    # Tier 2: fuzzy, whole-title comparison with a length floor
+    result = process.extractOne(
+        guess,
+        choices,
+        scorer=fuzz.token_sort_ratio,
+        score_cutoff=85,
+    )
+    if result is None:
+        return None
+    matched = result[0]
+    if len(guess) < 0.7 * len(matched):
+        return None
+    return matched
+
+
 @app.post("/play-turn")
 async def play_turn(
     game_id: str = Query(...),
@@ -158,21 +207,21 @@ async def play_turn(
     unused_titles = [m["title"] for m in ranked_movies if m["rank"] not in session["filled_ranks"]]
     unused_lower = {t.lower() for t in unused_titles}
 
-    # Fuzzy match against unused titles only
-    match_result = process.extractOne(
-        player_movie.lower(),
-        unused_lower,
-        scorer=fuzz.WRatio,
-        score_cutoff=90  # Increased from 70 to require much closer matches
-    )
+    guess = player_movie.strip().lower()
 
-    if not match_result:
+    # Reject inputs that are too short to be a meaningful guess
+    if len(guess) < 3:
+        return {"error": "Please type more of the movie title"}
+
+    matched_title = find_title_match(guess, unused_lower)
+
+    if not matched_title:
         return {"error": "Movie not recognized — try spelling it more closely"}
 
     # Find the actual movie entry
     movie_entry = None
     for m in ranked_movies:
-        if m["title"].lower() == match_result[0]:
+        if m["title"].lower() == matched_title:
             movie_entry = m
             break
     
