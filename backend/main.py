@@ -52,7 +52,7 @@ async def get_daily_actor():
                 raise HTTPException(status_code=404, detail=f"Actor '{ACTOR_OVERRIDE}' not found on TMDb")
             actor_id = search_results[0]["id"]
         else:
-            actor_id = int(ACTOR_OVERRIDE)
+            actor_id = int("Russel Crowe")
     else:
         actor_list = [
             31,     # Tom Hanks
