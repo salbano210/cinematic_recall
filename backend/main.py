@@ -28,37 +28,58 @@ load_dotenv()
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p"
 
+# ==============================================================================
+# ACTOR OVERRIDE CONFIGURATION:
+# - Set to None to use the automatic daily rotation schedule.
+# - Set to a TMDb Person ID (e.g. 6193 for Leonardo DiCaprio) to force that actor.
+# - Set to an actor's name (e.g. "Harrison Ford") to automatically search & use them.
+# ==============================================================================
+ACTOR_OVERRIDE = None
+
 @app.get("/")
 def read_root():
     return {"message": "Cinematic Recall API", "key_loaded": TMDB_API_KEY is not None}
 
 @app.get("/daily-actor")
 async def get_daily_actor():
-    actor_list = [
-        31,     # Tom Hanks
-        2888,   # Will Smith
-        1233,   # Johnny Depp
-        1892,   # Matt Damon
-        190,    # Morgan Freeman
-        3061,   # Ryan Reynolds
-        380,    # Robert De Niro
-        6193,   # Leonardo DiCaprio
-        64,     # Brad Pitt
-        287,    # Bruce Willis
-        2231,   # Samuel L. Jackson
-        11856,  # Nicolas Cage
-        113,    # Keanu Reeves
-        3223,   # Robert Downey Jr.
-        1245,   # Scarlett Johansson
-        10912,  # Emma Stone
-        54693,  # Emma Watson
-        17605,  # Jennifer Lawrence
-        5081,   # Meryl Streep
-        11701   # Denzel Washington
-    ]
-    
-    day_of_year = datetime.datetime.utcnow().timetuple().tm_yday
-    actor_id = actor_list[day_of_year % len(actor_list)]
+    if ACTOR_OVERRIDE is not None:
+        if isinstance(ACTOR_OVERRIDE, int):
+            actor_id = ACTOR_OVERRIDE
+        elif isinstance(ACTOR_OVERRIDE, str):
+            # If a name like "Tom Cruise" is provided, search TMDb
+            search_results = await search_actor_by_name(ACTOR_OVERRIDE)
+            if not search_results:
+                raise HTTPException(status_code=404, detail=f"Actor '{ACTOR_OVERRIDE}' not found on TMDb")
+            actor_id = search_results[0]["id"]
+        else:
+            actor_id = int(ACTOR_OVERRIDE)
+    else:
+        actor_list = [
+            31,     # Tom Hanks
+            2888,   # Will Smith
+            1233,   # Johnny Depp
+            1892,   # Matt Damon
+            190,    # Morgan Freeman
+            3061,   # Ryan Reynolds
+            380,    # Robert De Niro
+            6193,   # Leonardo DiCaprio
+            64,     # Brad Pitt
+            287,    # Bruce Willis
+            2231,   # Samuel L. Jackson
+            11856,  # Nicolas Cage
+            113,    # Keanu Reeves
+            3223,   # Robert Downey Jr.
+            1245,   # Scarlett Johansson
+            10912,  # Emma Stone
+            54693,  # Emma Watson
+            17605,  # Jennifer Lawrence
+            5081,   # Meryl Streep
+            11701   # Denzel Washington
+        ]
+        
+        day_of_year = datetime.datetime.utcnow().timetuple().tm_yday
+        actor_id = actor_list[day_of_year % len(actor_list)]
+
     actor_details = await get_actor_details(actor_id)
     
     return {
