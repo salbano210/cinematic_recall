@@ -196,6 +196,12 @@ function App() {
               )}
             </div>
 
+            {error && (
+              <div className="error">
+                {error}
+              </div>
+            )}
+
             <div className="score">
               {Object.keys(filledRanks).length} / {totalMovies}
             </div>
@@ -228,12 +234,6 @@ function App() {
                 );
               })}
             </div>
-
-            {error && (
-              <div className="error">
-                {error}
-              </div>
-            )}
           </div>
         )}
       </div>
