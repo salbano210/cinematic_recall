@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 import os
 import uuid
 import datetime
+import re
 
 # Store game sessions by game_id
 game_sessions = {}
@@ -142,6 +143,49 @@ async def start_game(
 
 LEADING_ARTICLES = ("the ", "a ", "an ")
 
+# --------------------------------------------------------------------------
+# NUMBER & SYMBOL NORMALIZATION
+# Movie titles are inconsistent in the wild: TMDb uses "Dune: Part Two" while
+# users naturally type "dune: part 2". We normalize BOTH sides before matching
+# so these are treated as identical, without needing a new library.
+# --------------------------------------------------------------------------
+
+WORD_TO_NUM = {
+    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+    "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+    "ten": "10", "eleven": "11", "twelve": "12", "thirteen": "13",
+    "fourteen": "14", "fifteen": "15", "sixteen": "16", "seventeen": "17",
+    "eighteen": "18", "nineteen": "19", "twenty": "20"
+}
+ROMAN_TO_NUM = {
+    "i": "1", "ii": "2", "iii": "3", "iv": "4", "v": "5",
+    "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10",
+    "xi": "11", "xii": "12"
+}
+
+def _normalize(title: str) -> str:
+    """Normalize a title for comparison:
+    - lowercase
+    - replace '&' with 'and'
+    - strip punctuation (colons, hyphens, apostrophes, etc.)
+    - convert number words ('two') and roman numerals ('ii') to digits ('2')
+    - collapse whitespace
+    """
+    t = title.lower().strip()
+    t = t.replace("&", " and ")
+    # Remove all punctuation except spaces
+    t = re.sub(r"[^\w\s]", " ", t)
+    # Tokenize and normalize numbers
+    tokens = []
+    for tok in t.split():
+        if tok in WORD_TO_NUM:
+            tokens.append(WORD_TO_NUM[tok])
+        elif tok in ROMAN_TO_NUM:
+            tokens.append(ROMAN_TO_NUM[tok])
+        else:
+            tokens.append(tok)
+    return " ".join(tokens)
+
 
 def _strip_article(title: str) -> str:
     for article in LEADING_ARTICLES:
@@ -153,40 +197,55 @@ def _strip_article(title: str) -> str:
 def find_title_match(guess: str, choices) -> str | None:
     """Match a player's guess against the remaining movie titles.
 
-    Two tiers, both deliberately strict so a stray keystroke can never
-    auto-fill an unrelated title (the old WRatio scorer gave 'i' a 90+
-    partial-substring score against 'Unhinged'):
+    Three tiers, all with punctuation/number normalization so variants like
+    'dune: part 2' ↔ 'Dune: Part Two' or 'oceans 11' ↔ "Ocean's Eleven"
+    match naturally:
 
-    Tier 1 - exact match, ignoring a leading 'the/a/an' on either side
-             ('mummy' -> 'The Mummy').
-    Tier 2 - typo-tolerant full-title match: token_sort_ratio >= 85 AND
+    Tier 1 - exact match after normalization (ignores punctuation, case,
+             number words, roman numerals, and leading 'the/a/an').
+    Tier 2 - typo-tolerant fuzzy match: token_sort_ratio >= 82 AND
              the guess must cover at least 70% of the matched title's
              length. This accepts real typos ('gladiater' -> 'Gladiator',
              'beatiful mind' -> 'A Beautiful Mind') but rejects fragments
              ('i', 'b', 'gla', 'beaut', 'yuma', 'guys', ...).
     """
-    # Tier 1: exact (also try stripping leading articles)
-    if guess in choices:
-        return guess
+    # Tier 1: normalized exact match
+    norm_guess = _normalize(guess)
     for choice in choices:
-        if _strip_article(choice) == guess:
+        if _normalize(choice) == norm_guess:
             return choice
-        if choice == _strip_article(guess):
+        # Try stripping articles on both sides
+        if _normalize(_strip_article(choice)) == norm_guess:
+            return choice
+        if _normalize(choice) == _normalize(_strip_article(guess)):
             return choice
 
-    # Tier 2: fuzzy, whole-title comparison with a length floor
+    # Tier 2: fuzzy on normalized strings. Use token_set_ratio (not token_sort)
+    # because it handles subset matches well: "fast and furious" ⊂ "the fast
+    # and the furious" scores 100, while still requiring all guess tokens to
+    # appear. Lower threshold to 82 since normalization already handles
+    # systematic differences; this now only needs to catch typos.
+    norm_choices = {c: _normalize(c) for c in choices}
     result = process.extractOne(
-        guess,
-        choices,
-        scorer=fuzz.token_sort_ratio,
-        score_cutoff=85,
+        norm_guess,
+        norm_choices.values(),
+        scorer=fuzz.token_set_ratio,
+        score_cutoff=82,
     )
     if result is None:
         return None
-    matched = result[0]
-    if len(guess) < 0.7 * len(matched):
+    matched_norm = result[0]
+    # Length floor: guess must be at least 40% of the matched title's length
+    # (was 70%, but that blocked short-but-valid variants like "dune 2").
+    # Combined with token_set_ratio's high bar (all guess tokens must match),
+    # this still rejects fragments like "i" or "beaut".
+    if len(norm_guess) < 0.4 * len(matched_norm):
         return None
-    return matched
+    # Map back to original choice
+    for orig, norm in norm_choices.items():
+        if norm == matched_norm:
+            return orig
+    return None
 
 
 @app.post("/play-turn")
