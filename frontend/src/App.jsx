@@ -24,6 +24,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [isShaking, setIsShaking] = useState(false);
   const [slowLoad, setSlowLoad] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   // Warm up the backend as soon as the page loads. Render's free tier
   // sleeps after 15 min of inactivity and takes 30-50s to cold-start,
@@ -81,13 +82,14 @@ function App() {
     setFilledRanks({});
     setMissedRanks({});
     setGaveUp(false);
+    setShareCopied(false);
     setPlayerInput("");
     setTotalMovies(0);
   };
 
   const handleSessionExpired = () => {
     resetGame();
-    setError("Your session expired (the server was updated). Click 'Reveal Today\'s Actor' to start fresh!");
+    setError("Your session expired (the server was updated). Click 'Reveal Today's Actor' to start fresh!");
   };
 
   const playTurn = async () => {
@@ -154,6 +156,44 @@ function App() {
       }
       setError("Failed to reveal answers.");
     }
+  };
+
+  // 🟥 < 25% of titles | 🟨 25-75% | 🟩 75%+
+  const buildShareText = () => {
+    const gotten = Object.keys(filledRanks).length;
+    const ratio = totalMovies > 0 ? gotten / totalMovies : 0;
+    const square = ratio < 0.25 ? '🟥' : ratio < 0.75 ? '🟨' : '🟩';
+    const date = new Date().toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    });
+    return [
+      '🎬 Cinematic Recall',
+      `📅 ${date}`,
+      `🔗 ${window.location.href}`,
+      `Titles: ${gotten}/${totalMovies}`,
+      square
+    ].join('\n');
+  };
+
+  const shareResult = async () => {
+    const text = buildShareText();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Fallback for older browsers / non-secure contexts
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
   };
 
   return (
@@ -254,6 +294,14 @@ function App() {
                 );
               })}
             </div>
+
+            {gaveUp && (
+              <div className="share-container">
+                <button onClick={shareResult} className="btn btn-share">
+                  {shareCopied ? '✅ Copied to clipboard!' : '📋 Share My Result'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

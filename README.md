@@ -112,6 +112,7 @@ cinematic_recall/
 - 📱 **Mobile Responsive & Container Queries**: Auto-sizing typography ensures titles fit within each tile on all screen sizes from mobile to desktop.
 - 🛑 **Immediate Error Feedback**: Shakes and glows red on unrecognized movie inputs without clearing your typed text so typos can easily be corrected.
 - 💡 **Give Up & Review**: Instantly reveals all missed films in red tiles with release years and popularity percentages.
+- 📋 **Share Your Result**: Wordle-style clipboard summary with your score and a performance square (🟥 <25%, 🟨 25–75%, 🟩 75%+).
 
 ---
 
