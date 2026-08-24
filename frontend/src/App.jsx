@@ -246,12 +246,18 @@ function App() {
                 onKeyDown={(e) => e.key === 'Enter' && playTurn()}
                 className={`input ${isShaking ? 'shake-error' : ''}`}
               />
-              <button onClick={playTurn} className="btn btn-success">
-                Submit
-              </button>
-              {!gaveUp && (
-                <button onClick={giveUp} className="btn btn-giveup">
-                  Give Up
+              {!gaveUp ? (
+                <>
+                  <button onClick={playTurn} className="btn btn-success">
+                    Submit
+                  </button>
+                  <button onClick={giveUp} className="btn btn-giveup">
+                    Give Up
+                  </button>
+                </>
+              ) : (
+                <button onClick={shareResult} className="btn btn-share">
+                  {shareCopied ? '✅ Copied to clipboard!' : '📋 Share My Result'}
                 </button>
               )}
             </div>
@@ -294,14 +300,6 @@ function App() {
                 );
               })}
             </div>
-
-            {gaveUp && (
-              <div className="share-container">
-                <button onClick={shareResult} className="btn btn-share">
-                  {shareCopied ? '✅ Copied to clipboard!' : '📋 Share My Result'}
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>
