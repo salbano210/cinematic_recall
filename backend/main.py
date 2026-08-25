@@ -194,58 +194,81 @@ def _strip_article(title: str) -> str:
     return title
 
 
+def _title_variants(title: str) -> list[str]:
+    """Generate matchable variants of a title:
+    - The full normalized title
+    - The title with subtitle stripped (everything after a colon)
+    - For long titles without a colon, the first 3-4 words (the 'head')
+      e.g. 'The French Dispatch of the Liberty, Kansas Evening Sun'
+           -> 'the french dispatch'
+    """
+    norm = _normalize(title)
+    variants = {norm}
+
+    # Strip subtitle after colon (in original, before normalization removed it)
+    if ':' in title:
+        main_part = title.split(':', 1)[0]
+        variants.add(_normalize(main_part))
+
+    # For long titles, also accept the first few words as the common name
+    words = norm.split()
+    if len(words) >= 5:
+        variants.add(' '.join(words[:4]))
+        variants.add(' '.join(words[:3]))
+
+    return list(variants)
+
+
 def find_title_match(guess: str, choices) -> str | None:
     """Match a player's guess against the remaining movie titles.
 
-    Three tiers, all with punctuation/number normalization so variants like
-    'dune: part 2' ↔ 'Dune: Part Two' or 'oceans 11' ↔ "Ocean's Eleven"
-    match naturally:
+    Uses normalization + title variants so that:
+    - 'dune: part 2' ↔ 'Dune: Part Two' (number/punctuation normalization)
+    - 'the french dispatch' ↔ 'The French Dispatch of the Liberty, Kansas
+      Evening Sun' (long official titles match their common short name)
+    - 'oceans 11' ↔ "Ocean's Eleven" (apostrophe/number handling)
 
-    Tier 1 - exact match after normalization (ignores punctuation, case,
-             number words, roman numerals, and leading 'the/a/an').
-    Tier 2 - typo-tolerant fuzzy match: token_sort_ratio >= 82 AND
-             the guess must cover at least 70% of the matched title's
-             length. This accepts real typos ('gladiater' -> 'Gladiator',
-             'beatiful mind' -> 'A Beautiful Mind') but rejects fragments
-             ('i', 'b', 'gla', 'beaut', 'yuma', 'guys', ...).
+    Tier 1 - exact match against any title variant (normalized).
+    Tier 2 - fuzzy match (token_set_ratio >= 82) with a 40% length floor,
+             checked against the best-matching variant (not the full title),
+             so short common names for long titles still pass.
     """
-    # Tier 1: normalized exact match
     norm_guess = _normalize(guess)
-    for choice in choices:
-        if _normalize(choice) == norm_guess:
-            return choice
-        # Try stripping articles on both sides
-        if _normalize(_strip_article(choice)) == norm_guess:
-            return choice
-        if _normalize(choice) == _normalize(_strip_article(guess)):
-            return choice
 
-    # Tier 2: fuzzy on normalized strings. Use token_set_ratio (not token_sort)
-    # because it handles subset matches well: "fast and furious" ⊂ "the fast
-    # and the furious" scores 100, while still requiring all guess tokens to
-    # appear. Lower threshold to 82 since normalization already handles
-    # systematic differences; this now only needs to catch typos.
-    norm_choices = {c: _normalize(c) for c in choices}
-    result = process.extractOne(
-        norm_guess,
-        norm_choices.values(),
-        scorer=fuzz.token_set_ratio,
-        score_cutoff=82,
-    )
-    if result is None:
+    # Build map: choice -> list of normalized variants
+    choice_variants = {c: _title_variants(c) for c in choices}
+
+    # Tier 1: exact match against any variant
+    for choice, variants in choice_variants.items():
+        for variant in variants:
+            if variant == norm_guess:
+                return choice
+            # Try stripping articles on both sides
+            if _strip_article(variant) == norm_guess:
+                return choice
+            if variant == _strip_article(norm_guess):
+                return choice
+
+    # Tier 2: fuzzy match against all variants, keep the best-scoring one
+    best_choice = None
+    best_score = 0
+    best_variant_len = 0
+    for choice, variants in choice_variants.items():
+        for variant in variants:
+            score = fuzz.token_set_ratio(norm_guess, variant)
+            if score > best_score:
+                best_score = score
+                best_choice = choice
+                best_variant_len = len(variant)
+
+    if best_score < 82:
         return None
-    matched_norm = result[0]
-    # Length floor: guess must be at least 40% of the matched title's length
-    # (was 70%, but that blocked short-but-valid variants like "dune 2").
-    # Combined with token_set_ratio's high bar (all guess tokens must match),
-    # this still rejects fragments like "i" or "beaut".
-    if len(norm_guess) < 0.4 * len(matched_norm):
+    # Length floor: guess must be at least 40% of the matched VARIANT's length
+    # (using the variant, not the full title, so 'the french dispatch' passes
+    # against the 4-word head variant even though the full title is 55 chars)
+    if len(norm_guess) < 0.4 * best_variant_len:
         return None
-    # Map back to original choice
-    for orig, norm in norm_choices.items():
-        if norm == matched_norm:
-            return orig
-    return None
+    return best_choice
 
 
 @app.post("/play-turn")
