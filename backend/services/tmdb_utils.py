@@ -1,5 +1,7 @@
 import os
+import asyncio
 import httpx
+from datetime import date
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,6 +9,15 @@ load_dotenv()
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p"
+
+# Standard TMDb keywords that indicate behind-the-scenes / making-of content
+BTS_KEYWORDS = {
+    "behind the scenes",
+    "making of",
+    "making-of",
+    "featurette",
+    "behind the camera",
+}
 
 async def search_actor_by_name(name: str):
     url = f"{TMDB_BASE_URL}/search/person"
@@ -32,8 +43,32 @@ async def get_actor_filmography(actor_id: int):
 
         # Combine cast + crew, then deduplicate by movie ID
         movies = data.get("cast", []) + data.get("crew", [])
-        unique_movies = {movie["id"]: movie for movie in movies}.values()
-        return list(unique_movies)
+        unique_movies = list({movie["id"]: movie for movie in movies}.values())
+
+        # Filter 1: remove unreleased films (no release date, or dated in future)
+        today = date.today().isoformat()
+        released = [
+            m for m in unique_movies
+            if m.get("release_date") and m["release_date"] <= today
+        ]
+
+        # Filter 2: remove behind-the-scenes / making-of content by checking
+        # TMDb keywords for each movie (batched concurrently for speed)
+        async def is_bts(movie):
+            try:
+                resp = await client.get(
+                    f"{TMDB_BASE_URL}/movie/{movie['id']}/keywords",
+                    params={"api_key": TMDB_API_KEY}
+                )
+                resp.raise_for_status()
+                keywords = resp.json().get("keywords", [])
+                return any(k["name"].lower() in BTS_KEYWORDS for k in keywords)
+            except Exception:
+                # On API error, keep the movie rather than silently drop it
+                return False
+
+        bts_flags = await asyncio.gather(*(is_bts(m) for m in released))
+        return [m for m, is_bts_movie in zip(released, bts_flags) if not is_bts_movie]
 
 async def get_actor_details(actor_id: int):
     """Get actor name, profile image, and details from TMDb"""
