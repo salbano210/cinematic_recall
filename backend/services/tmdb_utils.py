@@ -41,8 +41,10 @@ async def get_actor_filmography(actor_id: int):
         response.raise_for_status()
         data = response.json()
 
-        # Combine cast + crew, then deduplicate by movie ID
-        movies = data.get("cast", []) + data.get("crew", [])
+        # Only use CAST credits — the actor must appear in the movie.
+        # Including crew credits pulls in films they merely produced/crewed
+        # (e.g. Tom Hanks producing 'Mamma Mia' or 'My Big Fat Greek Wedding').
+        movies = data.get("cast", [])
         unique_movies = list({movie["id"]: movie for movie in movies}.values())
 
         # Filter 1: remove unreleased films (no release date, or dated in future)
