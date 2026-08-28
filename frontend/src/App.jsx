@@ -43,10 +43,23 @@ function App() {
       // Ignore errors — this is just a wake-up ping
     });
 
-    // Restore today's in-progress or completed game from localStorage
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (saved && saved.date === getTodayString()) {
+    // Restore today's in-progress or completed game from localStorage,
+    // but only if the featured actor hasn't been overridden mid-day
+    const restoreGame = async () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (!saved || saved.date !== getTodayString()) {
+          localStorage.removeItem(STORAGE_KEY);
+          return;
+        }
+
+        // Check if the actor is still the current one (guards against mid-day overrides)
+        const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/daily-actor`);
+        if (res.data.actor_id !== saved.actorId) {
+          localStorage.removeItem(STORAGE_KEY);
+          return;
+        }
+
         setActorId(saved.actorId);
         setActorName(saved.actorName);
         setActorImage(saved.actorImage);
@@ -74,13 +87,11 @@ function App() {
             setGameId('restored');
           });
         }
-      } else {
-        // Different day (or nothing saved) — clear stale state
+      } catch {
         localStorage.removeItem(STORAGE_KEY);
       }
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    };
+    restoreGame();
   }, []);
 
   // Persist game state to localStorage whenever it changes (only when a game
@@ -245,11 +256,12 @@ function App() {
     }
   };
 
-  // 🟥 < 25% of titles | 🟨 25-75% | 🟩 75%+
+  // Progress-bar share format: Named: X/Y Movies 🎞️ + 10-block bar
   const buildShareText = () => {
     const gotten = Object.keys(filledRanks).length;
     const ratio = totalMovies > 0 ? gotten / totalMovies : 0;
-    const square = ratio < 0.25 ? '🟥' : ratio < 0.75 ? '🟨' : '🟩';
+    const filled = Math.round(ratio * 10);
+    const bar = '🟩'.repeat(filled) + '⬛'.repeat(10 - filled);
     const date = new Date().toLocaleDateString('en-US', {
       month: 'long',
       day: 'numeric',
@@ -259,8 +271,8 @@ function App() {
       '🎬 Cinematic Recall',
       `📅 ${date}`,
       `🔗 ${window.location.href}`,
-      `Titles: ${gotten}/${totalMovies}`,
-      square
+      `Named: ${gotten}/${totalMovies} Movies 🎞️`,
+      `[${bar}]`
     ].join('\n');
   };
 
