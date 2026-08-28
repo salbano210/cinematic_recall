@@ -2,6 +2,14 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
 
+const STORAGE_KEY = 'cinematic_recall_state';
+
+// YYYY-MM-DD for today, used to detect "same day" persistence
+const getTodayString = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const getTitleClass = (title) => {
   if (!title) return '';
   const len = title.length;
@@ -14,6 +22,7 @@ const getTitleClass = (title) => {
 function App() {
   const [actorName, setActorName] = useState(null);
   const [actorImage, setActorImage] = useState(null);
+  const [actorId, setActorId] = useState(null);
   const [gameId, setGameId] = useState(null);
   const [playerInput, setPlayerInput] = useState("");
   const [filledRanks, setFilledRanks] = useState({});
@@ -33,7 +42,66 @@ function App() {
     axios.get(`${import.meta.env.VITE_BACKEND_URL}/`).catch(() => {
       // Ignore errors — this is just a wake-up ping
     });
+
+    // Restore today's in-progress or completed game from localStorage
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved && saved.date === getTodayString()) {
+        setActorId(saved.actorId);
+        setActorName(saved.actorName);
+        setActorImage(saved.actorImage);
+        setFilledRanks(saved.filledRanks || {});
+        setMissedRanks(saved.missedRanks || {});
+        setGaveUp(saved.gaveUp || false);
+        setTotalMovies(saved.totalMovies || 0);
+
+        // If the player gave up, the game is over — just show the results
+        // (no server session needed, guessing stays disabled).
+        if (saved.gaveUp) {
+          setGameId('restored');
+        } else {
+          // In-progress game: silently start a fresh server session so the
+          // player can continue guessing. The restored filledRanks are purely
+          // visual; the server will reject duplicate guesses for filled ranks
+          // anyway, which is acceptable.
+          setGameId('restoring');  // placeholder while start-game is in flight
+          axios.post(`${import.meta.env.VITE_BACKEND_URL}/start-game`, null, {
+            params: { actor_id: saved.actorId, difficulty: 'medium' }
+          }).then(res => {
+            setGameId(res.data.game_id);
+          }).catch(() => {
+            // If the server is down, fall back to read-only mode
+            setGameId('restored');
+          });
+        }
+      } else {
+        // Different day (or nothing saved) — clear stale state
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    }
   }, []);
+
+  // Persist game state to localStorage whenever it changes (only when a game
+  // is active and actor data exists)
+  useEffect(() => {
+    if (!gameId || !actorName) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        date: getTodayString(),
+        actorId,
+        actorName,
+        actorImage,
+        filledRanks,
+        missedRanks,
+        gaveUp,
+        totalMovies,
+      }));
+    } catch {
+      // localStorage full or unavailable (private browsing) — ignore
+    }
+  }, [gameId, actorId, actorName, actorImage, filledRanks, missedRanks, gaveUp, totalMovies]);
 
   const triggerShake = () => {
     setIsShaking(true);
@@ -54,6 +122,7 @@ function App() {
       const name = res.data.actor_name || `Actor #${actorId}`;
       const image = res.data.actor_image;
       
+      setActorId(actorId);
       setActorName(name);
       setActorImage(image);
       
@@ -77,6 +146,7 @@ function App() {
 
   const resetGame = () => {
     setGameId(null);
+    setActorId(null);
     setActorName(null);
     setActorImage(null);
     setFilledRanks({});
@@ -85,6 +155,7 @@ function App() {
     setShareCopied(false);
     setPlayerInput("");
     setTotalMovies(0);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   const handleSessionExpired = () => {
@@ -94,7 +165,15 @@ function App() {
 
   const playTurn = async () => {
     if (!playerInput.trim()) return;
-    
+    if (gameId === 'restored') {
+      setError("Your game session has expired. Start a new game to play again.");
+      return;
+    }
+    if (gameId === 'restoring') {
+      setError("Restoring your session — one moment...");
+      return;
+    }
+
     try {
       const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/play-turn`, null, {
         params: {
@@ -132,6 +211,14 @@ function App() {
   };
 
   const giveUp = async () => {
+    if (gameId === 'restored') {
+      setError("Your game session has expired. Start a new game to play again.");
+      return;
+    }
+    if (gameId === 'restoring') {
+      setError("Restoring your session — one moment...");
+      return;
+    }
     try {
       const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/give-up`, null, {
         params: { game_id: gameId }
