@@ -91,17 +91,13 @@ async def get_daily_actor():
 
 @app.post("/start-game")
 async def start_game(
-    actor_id: int = Query(..., description="TMDb actor ID"),
-    difficulty: str = Query("hard", description="Difficulty: easy, medium, or hard")
+    actor_id: int = Query(..., description="TMDb actor ID")
 ):
     movies = await get_actor_filmography(actor_id)
 
-    # Sort by popularity descending (most popular first = rank 1)
-    sorted_movies = sorted(movies, key=lambda m: m.get("popularity", 0), reverse=True)
-    difficulty_levels = {"easy": 0.3, "medium": 0.6, "hard": 1.0}
-    limit_ratio = difficulty_levels.get(difficulty.lower(), 1.0)
-    limit = int(len(sorted_movies) * limit_ratio)
-    available_movies = sorted_movies[:limit]
+    # Sort by popularity descending (most popular first = rank 1).
+    # The full (filtered) filmography is used — no difficulty trimming.
+    available_movies = sorted(movies, key=lambda m: m.get("popularity", 0), reverse=True)
 
     # Build ordered list by rank (index 0 = rank 1 = most popular)
     ranked_movies = []

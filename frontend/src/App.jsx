@@ -79,7 +79,7 @@ function App() {
           // anyway, which is acceptable.
           setGameId('restoring');  // placeholder while start-game is in flight
           axios.post(`${import.meta.env.VITE_BACKEND_URL}/start-game`, null, {
-            params: { actor_id: saved.actorId, difficulty: 'medium' }
+            params: { actor_id: saved.actorId }
           }).then(res => {
             setGameId(res.data.game_id);
           }).catch(() => {
@@ -139,8 +139,7 @@ function App() {
       
       const gameRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/start-game`, null, {
         params: {
-          actor_id: actorId,
-          difficulty: 'medium'
+          actor_id: actorId
         }
       });
       
