@@ -35,7 +35,7 @@ TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p"
 # - Set to a TMDb Person ID (e.g. 6193 for Leonardo DiCaprio) to force that actor.
 # - Set to an actor's name (e.g. "Harrison Ford") to automatically search & use them.
 # ==============================================================================
-ACTOR_OVERRIDE = 1979 #Spacey
+ACTOR_OVERRIDE = 1461 #clooney
 
 @app.get("/")
 def read_root():
@@ -89,12 +89,33 @@ async def get_daily_actor():
         "actor_image": actor_details["profile_url"]
     }
 
+# Manually curated film credits that TMDb omits from an actor's movie_credits
+# endpoint. Each entry mirrors the fields get_actor_filmography returns.
+ACTOR_EXTRA_MOVIES = {
+    1979: [  # Kevin Spacey — replaced by Christopher Plummer; TMDb dropped his credit
+        {
+            "id": 446791,
+            "title": "All the Money in the World",
+            "release_date": "2017-12-21",
+            "popularity": 7.93,
+            "poster_path": "/q6nE9Hf0ezszjI4DbCxwzQ73MMy.jpg",
+        }
+    ],
+}
+
 @app.post("/start-game")
 async def start_game(
     actor_id: int = Query(..., description="TMDb actor ID"),
     difficulty: str = Query("hard", description="Difficulty: easy, medium, or hard")
 ):
     movies = await get_actor_filmography(actor_id)
+
+    # Merge in manually curated films that TMDb omits from this actor's
+    # credits (e.g. Spacey's "All the Money in the World" — he was replaced
+    # by Christopher Plummer and TMDb dropped his cast credit).
+    extras = ACTOR_EXTRA_MOVIES.get(actor_id, [])
+    existing_ids = {m["id"] for m in movies}
+    movies = movies + [e for e in extras if e["id"] not in existing_ids]
 
     # Sort by popularity descending (most popular first = rank 1)
     sorted_movies = sorted(movies, key=lambda m: m.get("popularity", 0), reverse=True)
@@ -291,8 +312,9 @@ async def play_turn(
 
     guess = player_movie.strip().lower()
 
-    # Reject inputs that are too short to be a meaningful guess
-    if len(guess) < 3:
+    # Reject inputs that are too short to be a meaningful guess — unless the
+    # guess exactly matches a title (e.g. the movie "21" or "Up").
+    if len(guess) < 3 and guess not in unused_lower:
         return {"error": "Please type more of the movie title"}
 
     matched_title = find_title_match(guess, unused_lower)
