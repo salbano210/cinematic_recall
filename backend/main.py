@@ -89,33 +89,12 @@ async def get_daily_actor():
         "actor_image": actor_details["profile_url"]
     }
 
-# Manually curated film credits that TMDb omits from an actor's movie_credits
-# endpoint. Each entry mirrors the fields get_actor_filmography returns.
-ACTOR_EXTRA_MOVIES = {
-    1979: [  # Kevin Spacey — replaced by Christopher Plummer; TMDb dropped his credit
-        {
-            "id": 446791,
-            "title": "All the Money in the World",
-            "release_date": "2017-12-21",
-            "popularity": 7.93,
-            "poster_path": "/q6nE9Hf0ezszjI4DbCxwzQ73MMy.jpg",
-        }
-    ],
-}
-
 @app.post("/start-game")
 async def start_game(
     actor_id: int = Query(..., description="TMDb actor ID"),
     difficulty: str = Query("hard", description="Difficulty: easy, medium, or hard")
 ):
     movies = await get_actor_filmography(actor_id)
-
-    # Merge in manually curated films that TMDb omits from this actor's
-    # credits (e.g. Spacey's "All the Money in the World" — he was replaced
-    # by Christopher Plummer and TMDb dropped his cast credit).
-    extras = ACTOR_EXTRA_MOVIES.get(actor_id, [])
-    existing_ids = {m["id"] for m in movies}
-    movies = movies + [e for e in extras if e["id"] not in existing_ids]
 
     # Sort by popularity descending (most popular first = rank 1)
     sorted_movies = sorted(movies, key=lambda m: m.get("popularity", 0), reverse=True)
