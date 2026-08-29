@@ -11,7 +11,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from services.tmdb_utils import search_actor_by_name, get_actor_filmography, get_actor_details
+from services.tmdb_utils import search_actor_by_name, get_actor_filmography, get_actor_details, get_movie_details
 from fastapi import Query
 import asyncio
 from rapidfuzz import process, fuzz
@@ -333,6 +333,25 @@ def find_title_match(guess: str, choices) -> str | None:
     return best_choice
 
 
+_movie_details_cache = {}  # movie_id -> details dict (immutable per movie, cache forever)
+
+@app.get("/movie-details")
+async def movie_details(
+    movie_id: int = Query(..., description="TMDb movie ID")
+):
+    """Synopsis + large poster for the tile popup (proxied from TMDb)."""
+    if movie_id in _movie_details_cache:
+        return _movie_details_cache[movie_id]
+
+    try:
+        details = await get_movie_details(movie_id)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Failed to fetch movie details")
+
+    _movie_details_cache[movie_id] = details
+    return details
+
+
 @app.post("/play-turn")
 async def play_turn(
     actor_id: int = Query(..., description="TMDb actor ID"),
@@ -381,6 +400,7 @@ async def play_turn(
 
     return {
         "movie": {
+            "id": movie_entry["id"],
             "title": movie_entry["title"],
             "rank": movie_entry["rank"],
             "percentage": movie_entry["percentage"],
@@ -406,6 +426,7 @@ async def give_up(
     # Return all movies the player missed
     missed = [
         {
+            "id": m["id"],
             "title": m["title"],
             "rank": m["rank"],
             "percentage": m["percentage"],

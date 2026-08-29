@@ -33,6 +33,9 @@ function App() {
   const [isShaking, setIsShaking] = useState(false);
   const [slowLoad, setSlowLoad] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [popupMovie, setPopupMovie] = useState(null);   // tile data of the clicked movie
+  const [popupDetails, setPopupDetails] = useState(null); // fetched synopsis/poster
+  const [popupLoading, setPopupLoading] = useState(false);
 
   // Warm up the backend as soon as the page loads. Render's free tier
   // sleeps after 15 min of inactivity and takes 30-50s to cold-start,
@@ -102,6 +105,41 @@ function App() {
     }, 600);
   };
 
+  // ---- Movie info popup ----
+  const closePopup = () => {
+    setPopupMovie(null);
+    setPopupDetails(null);
+    setPopupLoading(false);
+  };
+
+  const openMoviePopup = (movie) => {
+    setPopupMovie(movie);
+    setPopupDetails(null);
+    if (movie.id) {
+      setPopupLoading(true);
+      axios.get(`${import.meta.env.VITE_BACKEND_URL}/movie-details`, {
+        params: { movie_id: movie.id }
+      }).then(res => {
+        setPopupDetails(res.data);
+      }).catch(() => {
+        // Synopsis unavailable — popup still shows what we know locally
+        setPopupDetails(null);
+      }).finally(() => {
+        setPopupLoading(false);
+      });
+    }
+  };
+
+  // Close the popup with the Escape key
+  useEffect(() => {
+    if (!popupMovie) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') closePopup();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [popupMovie]);
+
   const revealActor = async () => {
     setLoading(true);
     setError(null);
@@ -153,6 +191,7 @@ function App() {
         setFilledRanks(prev => ({
           ...prev,
           [movie.rank]: {
+            id: movie.id,
             title: movie.title,
             percentage: movie.percentage,
             year: movie.year
@@ -184,6 +223,7 @@ function App() {
       const missed = {};
       (res.data.missed || []).forEach(m => {
         missed[m.rank] = {
+          id: m.id,
           title: m.title,
           percentage: m.percentage,
           year: m.year
@@ -264,8 +304,8 @@ function App() {
           <div>
             <div className="card">
               {actorImage && (
-                <img 
-                  src={actorImage} 
+                <img
+                  src={actorImage}
                   alt={actorName}
                   className="actor-image"
                 />
@@ -322,7 +362,8 @@ function App() {
                 return (
                   <div
                     key={rank}
-                    className={`square ${filled ? 'filled' : ''} ${missed ? 'missed' : ''}`}
+                    className={`square ${filled ? 'filled' : ''} ${missed ? 'missed' : ''} ${revealed ? 'clickable' : ''}`}
+                    onClick={() => revealed && openMoviePopup({ ...revealed, rank })}
                   >
                     {revealed ? (
                       <>
@@ -340,6 +381,56 @@ function App() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {popupMovie && (
+          <div className="popup-overlay" onClick={closePopup}>
+            <div className="popup-card" onClick={(e) => e.stopPropagation()}>
+              <button className="popup-close" onClick={closePopup} aria-label="Close">×</button>
+
+              <div className="popup-content">
+                <div className="popup-poster">
+                  {popupDetails?.poster_url || popupMovie.poster_url ? (
+                    <img
+                      src={popupDetails?.poster_url || popupMovie.poster_url}
+                      alt={popupMovie.title}
+                    />
+                  ) : (
+                    <div className="popup-poster-placeholder">🎞️</div>
+                  )}
+                </div>
+
+                <div className="popup-info">
+                  <p className="popup-rank">
+                    #{popupMovie.rank} · {popupMovie.percentage}% match
+                    {popupMovie.year && ` · ${popupMovie.year}`}
+                  </p>
+                  <a
+                    className="popup-title"
+                    href={popupMovie.id
+                      ? `https://www.themoviedb.org/movie/${popupMovie.id}`
+                      : `https://www.themoviedb.org/search?query=${encodeURIComponent(popupMovie.title)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {popupMovie.title} ↗
+                  </a>
+
+                  {popupLoading ? (
+                    <p className="popup-synopsis">Loading synopsis...</p>
+                  ) : (
+                    <p className="popup-synopsis">
+                      {popupDetails?.overview || "No synopsis available."}
+                    </p>
+                  )}
+
+                  {popupDetails?.runtime && (
+                    <p className="popup-runtime">{popupDetails.runtime} min</p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}

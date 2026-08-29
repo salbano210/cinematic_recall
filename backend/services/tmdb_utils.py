@@ -72,6 +72,27 @@ async def get_actor_filmography(actor_id: int):
         bts_flags = await asyncio.gather(*(is_bts(m) for m in released))
         return [m for m, is_bts_movie in zip(released, bts_flags) if not is_bts_movie]
 
+async def get_movie_details(movie_id: int):
+    """Get a movie's synopsis and large poster from TMDb (for the info popup)."""
+    url = f"{TMDB_BASE_URL}/movie/{movie_id}"
+    params = {"api_key": TMDB_API_KEY}
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        poster_path = data.get("poster_path")
+        poster_url = f"{TMDB_IMAGE_BASE_URL}/w500{poster_path}" if poster_path else None
+
+        return {
+            "title": data.get("title"),
+            "overview": data.get("overview"),
+            "poster_url": poster_url,
+            "year": (data.get("release_date") or "")[:4] or None,
+            "runtime": data.get("runtime"),
+        }
+
 async def get_actor_details(actor_id: int):
     """Get actor name, profile image, and details from TMDb"""
     url = f"{TMDB_BASE_URL}/person/{actor_id}"
