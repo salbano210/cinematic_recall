@@ -38,51 +38,86 @@ TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p"
 ACTOR_OVERRIDE = 1461 #clooney
 
 @app.get("/")
-def read_root():
+async def read_root():
+    # Kick off a background warm-up of today's actor data so that by the time
+    # the player clicks "start", the board is already built (Render free tier
+    # cold-starts are slow; this hides the TMDb latency behind the page load).
+    asyncio.create_task(warm_daily_cache())
     return {"message": "Cinematic Recall API", "key_loaded": TMDB_API_KEY is not None}
+
+
+# ----------------------------------------------------------------------
+# DAILY CACHE: filmography + actor details cached per actor per day, so the
+# root ping can pre-build the board and start-game/daily-actor are instant.
+# ----------------------------------------------------------------------
+_cache = {}  # actor_id -> {"date": "YYYY-MM-DD", "movies": [...], "details": {...}}
+
+def _cache_key_date():
+    return datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
+async def get_daily_actor_id() -> int:
+    """Resolve today's actor ID (override or rotation) — shared by /daily-actor and warm-up."""
+    if ACTOR_OVERRIDE is not None:
+        if isinstance(ACTOR_OVERRIDE, int):
+            return ACTOR_OVERRIDE
+        # If a name like "Russell Crowe" is provided, search TMDb
+        search_results = await search_actor_by_name(ACTOR_OVERRIDE)
+        if not search_results:
+            raise HTTPException(status_code=404, detail=f"Actor '{ACTOR_OVERRIDE}' not found on TMDb")
+        return search_results[0]["id"]
+    actor_list = [
+        31,     # Tom Hanks
+        2888,   # Will Smith
+        1233,   # Johnny Depp
+        1892,   # Matt Damon
+        190,    # Morgan Freeman
+        3061,   # Ryan Reynolds
+        380,    # Robert De Niro
+        6193,   # Leonardo DiCaprio
+        64,     # Brad Pitt
+        287,    # Bruce Willis
+        2231,   # Samuel L. Jackson
+        11856,  # Nicolas Cage
+        113,    # Keanu Reeves
+        3223,   # Robert Downey Jr.
+        1245,   # Scarlett Johansson
+        10912,  # Emma Stone
+        54693,  # Emma Watson
+        17605,  # Jennifer Lawrence
+        5081,   # Meryl Streep
+        11701   # Denzel Washington
+    ]
+    day_of_year = datetime.datetime.utcnow().timetuple().tm_yday
+    return actor_list[day_of_year % len(actor_list)]
+
+async def warm_daily_cache():
+    """Pre-fetch today's actor details + filmography into the cache. Safe to call often."""
+    try:
+        actor_id = await get_daily_actor_id()
+        today = _cache_key_date()
+        entry = _cache.get(actor_id)
+        if entry and entry["date"] == today and "details" in entry:
+            return  # already warm for today
+        details = await get_actor_details(actor_id)
+        movies = await get_actor_filmography(actor_id)
+        _cache[actor_id] = {"date": today, "movies": movies, "details": details}
+    except Exception:
+        # Warm-up is best-effort; real endpoints will fetch on demand
+        pass
 
 @app.get("/daily-actor")
 async def get_daily_actor():
-    if ACTOR_OVERRIDE is not None:
-        if isinstance(ACTOR_OVERRIDE, int):
-            actor_id = ACTOR_OVERRIDE
-        elif isinstance(ACTOR_OVERRIDE, str):
-            # If a name like "Russell Crowe" is provided, search TMDb
-            search_results = await search_actor_by_name(ACTOR_OVERRIDE)
-            if not search_results:
-                raise HTTPException(status_code=404, detail=f"Actor '{ACTOR_OVERRIDE}' not found on TMDb")
-            actor_id = search_results[0]["id"]
-        else:
-            actor_id = int(ACTOR_OVERRIDE)
-    else:
-        actor_list = [
-            31,     # Tom Hanks
-            2888,   # Will Smith
-            1233,   # Johnny Depp
-            1892,   # Matt Damon
-            190,    # Morgan Freeman
-            3061,   # Ryan Reynolds
-            380,    # Robert De Niro
-            6193,   # Leonardo DiCaprio
-            64,     # Brad Pitt
-            287,    # Bruce Willis
-            2231,   # Samuel L. Jackson
-            11856,  # Nicolas Cage
-            113,    # Keanu Reeves
-            3223,   # Robert Downey Jr.
-            1245,   # Scarlett Johansson
-            10912,  # Emma Stone
-            54693,  # Emma Watson
-            17605,  # Jennifer Lawrence
-            5081,   # Meryl Streep
-            11701   # Denzel Washington
-        ]
-        
-        day_of_year = datetime.datetime.utcnow().timetuple().tm_yday
-        actor_id = actor_list[day_of_year % len(actor_list)]
+    actor_id = await get_daily_actor_id()
+    today = _cache_key_date()
 
-    actor_details = await get_actor_details(actor_id)
-    
+    # Serve from cache when warm (details were pre-fetched by the root ping)
+    entry = _cache.get(actor_id)
+    if entry and entry["date"] == today and "details" in entry:
+        actor_details = entry["details"]
+    else:
+        actor_details = await get_actor_details(actor_id)
+        _cache[actor_id] = {"date": today, "details": actor_details}
+
     return {
         "actor_id": actor_id,
         "actor_name": actor_details["name"],
@@ -93,7 +128,18 @@ async def get_daily_actor():
 async def start_game(
     actor_id: int = Query(..., description="TMDb actor ID")
 ):
-    movies = await get_actor_filmography(actor_id)
+    today = _cache_key_date()
+    entry = _cache.get(actor_id)
+
+    # Use the cached filmography when fresh; otherwise fetch and cache
+    if entry and entry["date"] == today and "movies" in entry:
+        movies = entry["movies"]
+    else:
+        movies = await get_actor_filmography(actor_id)
+        if entry and entry["date"] == today:
+            entry["movies"] = movies
+        else:
+            _cache[actor_id] = {"date": today, "movies": movies}
 
     # Sort by popularity descending (most popular first = rank 1).
     # The full (filtered) filmography is used — no difficulty trimming.
