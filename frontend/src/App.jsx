@@ -23,7 +23,6 @@ function App() {
   const [actorName, setActorName] = useState(null);
   const [actorImage, setActorImage] = useState(null);
   const [actorId, setActorId] = useState(null);
-  const [gameId, setGameId] = useState(null);
   const [playerInput, setPlayerInput] = useState("");
   const [filledRanks, setFilledRanks] = useState({});
   const [missedRanks, setMissedRanks] = useState({});
@@ -44,7 +43,9 @@ function App() {
     });
 
     // Restore today's in-progress or completed game from localStorage,
-    // but only if the featured actor hasn't been overridden mid-day
+    // but only if the featured actor hasn't been overridden mid-day.
+    // The game is stateless (board derived from actor + date), so restoring
+    // is purely visual — no server session needed.
     const restoreGame = async () => {
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -67,26 +68,6 @@ function App() {
         setMissedRanks(saved.missedRanks || {});
         setGaveUp(saved.gaveUp || false);
         setTotalMovies(saved.totalMovies || 0);
-
-        // If the player gave up, the game is over — just show the results
-        // (no server session needed, guessing stays disabled).
-        if (saved.gaveUp) {
-          setGameId('restored');
-        } else {
-          // In-progress game: silently start a fresh server session so the
-          // player can continue guessing. The restored filledRanks are purely
-          // visual; the server will reject duplicate guesses for filled ranks
-          // anyway, which is acceptable.
-          setGameId('restoring');  // placeholder while start-game is in flight
-          axios.post(`${import.meta.env.VITE_BACKEND_URL}/start-game`, null, {
-            params: { actor_id: saved.actorId }
-          }).then(res => {
-            setGameId(res.data.game_id);
-          }).catch(() => {
-            // If the server is down, fall back to read-only mode
-            setGameId('restored');
-          });
-        }
       } catch {
         localStorage.removeItem(STORAGE_KEY);
       }
@@ -97,7 +78,7 @@ function App() {
   // Persist game state to localStorage whenever it changes (only when a game
   // is active and actor data exists)
   useEffect(() => {
-    if (!gameId || !actorName) return;
+    if (!actorName) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         date: getTodayString(),
@@ -112,7 +93,7 @@ function App() {
     } catch {
       // localStorage full or unavailable (private browsing) — ignore
     }
-  }, [gameId, actorId, actorName, actorImage, filledRanks, missedRanks, gaveUp, totalMovies]);
+  }, [actorId, actorName, actorImage, filledRanks, missedRanks, gaveUp, totalMovies]);
 
   const triggerShake = () => {
     setIsShaking(true);
@@ -136,59 +117,34 @@ function App() {
       setActorId(actorId);
       setActorName(name);
       setActorImage(image);
-      
-      const gameRes = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/start-game`, null, {
-        params: {
-          actor_id: actorId
-        }
+
+      const boardRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/board`, {
+        params: { actor_id: actorId }
       });
-      
-      setGameId(gameRes.data.game_id);
-      setTotalMovies(gameRes.data.num_available_movies);
+
+      setTotalMovies(boardRes.data.total);
     } catch (err) {
       console.error("Error:", err);
-      setError("Failed to reveal actor or start game.");
+      setError("Failed to reveal actor or load the board.");
     }
     clearTimeout(slowTimer);
     setSlowLoad(false);
     setLoading(false);
   };
 
-  const resetGame = () => {
-    setGameId(null);
-    setActorId(null);
-    setActorName(null);
-    setActorImage(null);
-    setFilledRanks({});
-    setMissedRanks({});
-    setGaveUp(false);
-    setShareCopied(false);
-    setPlayerInput("");
-    setTotalMovies(0);
-    localStorage.removeItem(STORAGE_KEY);
-  };
-
-  const handleSessionExpired = () => {
-    resetGame();
-    setError("Your session expired (the server was updated). Click 'Reveal Today's Actor' to start fresh!");
-  };
+  // Helper: comma-separated filled ranks for the stateless API calls
+  const getFilledRanksParam = () =>
+    Object.keys(filledRanks).join(",");
 
   const playTurn = async () => {
     if (!playerInput.trim()) return;
-    if (gameId === 'restored') {
-      setError("Your game session has expired. Start a new game to play again.");
-      return;
-    }
-    if (gameId === 'restoring') {
-      setError("Restoring your session — one moment...");
-      return;
-    }
 
     try {
       const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/play-turn`, null, {
         params: {
-          game_id: gameId,
-          player_movie: playerInput
+          actor_id: actorId,
+          player_movie: playerInput,
+          filled_ranks: getFilledRanksParam()
         }
       });
       
@@ -210,10 +166,6 @@ function App() {
       }
     } catch (err) {
       console.error("Turn error:", err);
-      if (err.response?.status === 404 || err.response?.data?.detail === "Game not found") {
-        handleSessionExpired();
-        return;
-      }
       triggerShake();
       const apiMessage = err.response?.data?.error || err.response?.data?.detail;
       setError(apiMessage || "Turn failed");
@@ -221,17 +173,12 @@ function App() {
   };
 
   const giveUp = async () => {
-    if (gameId === 'restored') {
-      setError("Your game session has expired. Start a new game to play again.");
-      return;
-    }
-    if (gameId === 'restoring') {
-      setError("Restoring your session — one moment...");
-      return;
-    }
     try {
       const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/give-up`, null, {
-        params: { game_id: gameId }
+        params: {
+          actor_id: actorId,
+          filled_ranks: getFilledRanksParam()
+        }
       });
 
       const missed = {};
@@ -247,10 +194,6 @@ function App() {
       setError(null);
     } catch (err) {
       console.error("Give up error:", err);
-      if (err.response?.status === 404 || err.response?.data?.detail === "Game not found") {
-        handleSessionExpired();
-        return;
-      }
       setError("Failed to reveal answers.");
     }
   };
@@ -299,7 +242,7 @@ function App() {
       <div className="container">
         <h1 className="title">Cinematic Recall</h1>
 
-        {!gameId && (
+        {!actorName && (
           <div className="card">
             <h2 className="subtitle">Today's Featured Actor</h2>
             <button
@@ -317,7 +260,7 @@ function App() {
           </div>
         )}
 
-        {gameId && (
+        {actorName && (
           <div>
             <div className="card">
               {actorImage && (

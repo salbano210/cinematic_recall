@@ -17,12 +17,8 @@ import asyncio
 from rapidfuzz import process, fuzz
 from dotenv import load_dotenv
 import os
-import uuid
 import datetime
 import re
-
-# Store game sessions by game_id
-game_sessions = {}
 
 load_dotenv()
 
@@ -124,10 +120,13 @@ async def get_daily_actor():
         "actor_image": actor_details["profile_url"]
     }
 
-@app.post("/start-game")
-async def start_game(
-    actor_id: int = Query(..., description="TMDb actor ID")
-):
+async def get_ranked_board(actor_id: int) -> list[dict]:
+    """Deterministically ranked board for an actor.
+
+    Sort key is (popularity desc, TMDb movie id asc) so the board is identical
+    for every player, on every refresh, and across server restarts/deploys —
+    no server-side session state needed.
+    """
     today = _cache_key_date()
     entry = _cache.get(actor_id)
 
@@ -141,18 +140,20 @@ async def start_game(
         else:
             _cache[actor_id] = {"date": today, "movies": movies}
 
-    # Sort by popularity descending (most popular first = rank 1).
-    # The full (filtered) filmography is used — no difficulty trimming.
-    available_movies = sorted(movies, key=lambda m: m.get("popularity", 0), reverse=True)
+    # Full (filtered) filmography, deterministic order: popularity desc,
+    # movie id as tiebreak so equal popularities never shuffle between loads.
+    available_movies = sorted(
+        movies,
+        key=lambda m: (-(m.get("popularity") or 0), m.get("id") or 0)
+    )
 
-    # Build ordered list by rank (index 0 = rank 1 = most popular)
+    total = len(available_movies)
     ranked_movies = []
     for rank_idx, movie in enumerate(available_movies):
         rank = rank_idx + 1
-        total = len(available_movies)
         # Top movies = higher percentage
         percentage = max(5, int(((total - rank_idx) / total) * 100))
-        
+
         # Get movie poster URL
         poster_path = movie.get("poster_path")
         poster_url = f"{TMDB_IMAGE_BASE_URL}/w92{poster_path}" if poster_path else None
@@ -170,17 +171,18 @@ async def start_game(
             "year": year
         })
 
-    game_id = str(uuid.uuid4())
+    return ranked_movies
 
-    game_sessions[game_id] = {
-        "actor_id": actor_id,
-        "ranked_movies": ranked_movies,
-        "filled_ranks": set()
-    }
 
+@app.get("/board")
+async def get_board(
+    actor_id: int = Query(..., description="TMDb actor ID")
+):
+    """Board metadata only — no titles/years (those stay hidden until guessed)."""
+    ranked = await get_ranked_board(actor_id)
     return {
-        "game_id": game_id,
-        "num_available_movies": len(available_movies)
+        "actor_id": actor_id,
+        "total": len(ranked)
     }
 
 LEADING_ARTICLES = ("the ", "a ", "an ")
@@ -236,29 +238,37 @@ def _strip_article(title: str) -> str:
     return title
 
 
-def _title_variants(title: str) -> list[str]:
-    """Generate matchable variants of a title:
-    - The full normalized title
-    - The title with subtitle stripped (everything after a colon)
-    - For long titles without a colon, the first 3-4 words (the 'head')
-      e.g. 'The French Dispatch of the Liberty, Kansas Evening Sun'
-           -> 'the french dispatch'
+def _title_variants(title: str) -> tuple[list[str], list[str]]:
+    """Generate matchable variants of a title, split by match strength.
+
+    Returns (primary, heads):
+    - primary: the full normalized title, plus the colon-stripped main part
+      (e.g. 'Dune: Part Two' -> ['dune 2', 'dune'])
+    - heads: short first-3/4-word variants for long titles, fuzzy-matching only
+      (e.g. 'The French Dispatch of the Liberty, Kansas Evening Sun'
+       -> heads: ['the french dispatch of the', 'the french dispatch'])
+
+    Heads are separate because they can exactly collide with OTHER real titles
+    (e.g. "'Ocean's Eleven': The Look of the Con" has head 'ocean s 11', which
+    equals the real "Ocean's Eleven") — so they must never win an exact match
+    against a title that is itself in the pool.
     """
     norm = _normalize(title)
-    variants = {norm}
+    primary = [norm]
 
-    # Strip subtitle after colon (in original, before normalization removed it)
     if ':' in title:
-        main_part = title.split(':', 1)[0]
-        variants.add(_normalize(main_part))
+        main_part = _normalize(title.split(':', 1)[0])
+        if main_part and main_part != norm:
+            primary.append(main_part)
 
-    # For long titles, also accept the first few words as the common name
+    heads = []
     words = norm.split()
     if len(words) >= 5:
-        variants.add(' '.join(words[:4]))
-        variants.add(' '.join(words[:3]))
+        for head in (' '.join(words[:4]), ' '.join(words[:3])):
+            if head not in primary and head not in heads:
+                heads.append(head)
 
-    return list(variants)
+    return primary, heads
 
 
 def find_title_match(guess: str, choices) -> str | None:
@@ -277,15 +287,25 @@ def find_title_match(guess: str, choices) -> str | None:
     """
     norm_guess = _normalize(guess)
 
-    # Build map: choice -> list of normalized variants
+    # Build map: choice -> (primary_variants, head_variants)
     choice_variants = {c: _title_variants(c) for c in choices}
 
-    # Tier 1: exact match against any variant
-    for choice, variants in choice_variants.items():
-        for variant in variants:
+    # Tier 1a: exact match on the FULL normalized title — strongest signal,
+    # always wins over any other title's colon-strip or head variant.
+    for choice, (primary, _) in choice_variants.items():
+        if primary[0] == norm_guess:
+            return choice
+        # Try stripping articles on both sides
+        if _strip_article(primary[0]) == norm_guess:
+            return choice
+        if primary[0] == _strip_article(norm_guess):
+            return choice
+
+    # Tier 1b: exact match on colon-stripped main parts
+    for choice, (primary, _) in choice_variants.items():
+        for variant in primary[1:]:
             if variant == norm_guess:
                 return choice
-            # Try stripping articles on both sides
             if _strip_article(variant) == norm_guess:
                 return choice
             if variant == _strip_article(norm_guess):
@@ -295,8 +315,8 @@ def find_title_match(guess: str, choices) -> str | None:
     best_choice = None
     best_score = 0
     best_variant_len = 0
-    for choice, variants in choice_variants.items():
-        for variant in variants:
+    for choice, (primary, heads) in choice_variants.items():
+        for variant in primary + heads:
             score = fuzz.token_set_ratio(norm_guess, variant)
             if score > best_score:
                 best_score = score
@@ -315,21 +335,21 @@ def find_title_match(guess: str, choices) -> str | None:
 
 @app.post("/play-turn")
 async def play_turn(
-    game_id: str = Query(...),
-    player_movie: str = Query(...)
+    actor_id: int = Query(..., description="TMDb actor ID"),
+    player_movie: str = Query(...),
+    filled_ranks: str = Query("", description="Comma-separated ranks already filled by the client")
 ):
-    if game_id not in game_sessions:
-        raise HTTPException(status_code=404, detail="Game not found")
+    """Stateless turn: the client reports its filled ranks; the server validates
+    the guess against the deterministic daily board. No session state required."""
+    try:
+        filled = {int(r) for r in filled_ranks.split(",") if r.strip()}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid filled_ranks")
 
-    session = game_sessions[game_id]
-    ranked_movies = session["ranked_movies"]
-    
-    # Build map of all movie titles (lowercase -> original)
-    title_map = {m["title"].lower(): m for m in ranked_movies}
-    
-    # Get unused titles for matching
-    unused_titles = [m["title"] for m in ranked_movies if m["rank"] not in session["filled_ranks"]]
-    unused_lower = {t.lower() for t in unused_titles}
+    ranked_movies = await get_ranked_board(actor_id)
+
+    # Get unused titles for matching (based on client-reported filled ranks)
+    unused_lower = {m["title"].lower() for m in ranked_movies if m["rank"] not in filled}
 
     guess = player_movie.strip().lower()
 
@@ -349,18 +369,15 @@ async def play_turn(
         if m["title"].lower() == matched_title:
             movie_entry = m
             break
-    
+
     if not movie_entry:
         return {"error": "Movie not recognized"}
 
     rank = movie_entry["rank"]
-    
-    # Check if this rank is already filled
-    if rank in session["filled_ranks"]:
-        return {"error": "That movie has already been used!"}
 
-    # Fill this rank
-    session["filled_ranks"].add(rank)
+    # Check if this rank is already filled
+    if rank in filled:
+        return {"error": "That movie has already been used!"}
 
     return {
         "movie": {
@@ -370,18 +387,21 @@ async def play_turn(
             "poster_url": movie_entry["poster_url"],
             "year": movie_entry.get("year")
         },
-        "filled_count": len(session["filled_ranks"]),
+        "filled_count": len(filled) + 1,
         "total": len(ranked_movies)
     }
 
 @app.post("/give-up")
-async def give_up(game_id: str = Query(...)):
-    if game_id not in game_sessions:
-        raise HTTPException(status_code=404, detail="Game not found")
+async def give_up(
+    actor_id: int = Query(..., description="TMDb actor ID"),
+    filled_ranks: str = Query("", description="Comma-separated ranks already filled by the client")
+):
+    try:
+        filled = {int(r) for r in filled_ranks.split(",") if r.strip()}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid filled_ranks")
 
-    session = game_sessions[game_id]
-    ranked_movies = session["ranked_movies"]
-    filled_ranks = session["filled_ranks"]
+    ranked_movies = await get_ranked_board(actor_id)
 
     # Return all movies the player missed
     missed = [
@@ -392,22 +412,11 @@ async def give_up(game_id: str = Query(...)):
             "year": m.get("year")
         }
         for m in ranked_movies
-        if m["rank"] not in filled_ranks
+        if m["rank"] not in filled
     ]
 
     return {
         "missed": missed,
-        "filled_count": len(filled_ranks),
+        "filled_count": len(filled),
         "total": len(ranked_movies)
-    }
-
-@app.get("/game-state")
-def game_state(game_id: str = Query(...)):
-    if game_id not in game_sessions:
-        raise HTTPException(status_code=404, detail="Game not found")
-
-    session = game_sessions[game_id]
-    return {
-        "filled_ranks": list(session["filled_ranks"]),
-        "total": len(session["ranked_movies"])
     }
