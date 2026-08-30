@@ -31,7 +31,7 @@ TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p"
 # - Set to a TMDb Person ID (e.g. 6193 for Leonardo DiCaprio) to force that actor.
 # - Set to an actor's name (e.g. "Harrison Ford") to automatically search & use them.
 # ==============================================================================
-ACTOR_OVERRIDE = 1461 #clooney
+ACTOR_OVERRIDE = 1813 #hathaway
 
 @app.get("/")
 async def read_root():
