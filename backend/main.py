@@ -27,11 +27,22 @@ TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p"
 
 # ==============================================================================
 # ACTOR OVERRIDE CONFIGURATION:
-# - Set to None to use the automatic daily rotation schedule.
-# - Set to a TMDb Person ID (e.g. 6193 for Leonardo DiCaprio) to force that actor.
-# - Set to an actor's name (e.g. "Harrison Ford") to automatically search & use them.
+# - Set the ACTOR_OVERRIDE environment variable (Render dashboard -> Environment)
+#   to force a specific actor without pushing code:
+#     * a TMDb Person ID (e.g. "6193" for Leonardo DiCaprio), or
+#     * an actor's name (e.g. "Harrison Ford") to search & use them.
+# - Leave it unset/empty to use the automatic daily rotation: the actor changes
+#   by itself every day at midnight UTC — no cron or workflow required.
+# - Set it in backend/.env locally (ACTOR_OVERRIDE=1813) for local testing.
 # ==============================================================================
-ACTOR_OVERRIDE = 1813 #hathaway
+_raw_override = os.getenv("ACTOR_OVERRIDE", "").strip()
+if not _raw_override:
+    ACTOR_OVERRIDE = None
+else:
+    try:
+        ACTOR_OVERRIDE = int(_raw_override)
+    except ValueError:
+        ACTOR_OVERRIDE = _raw_override
 
 @app.get("/")
 async def read_root():
