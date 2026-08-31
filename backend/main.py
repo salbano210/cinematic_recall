@@ -76,27 +76,49 @@ async def get_daily_actor_id() -> int:
         if not search_results:
             raise HTTPException(status_code=404, detail=f"Actor '{ACTOR_OVERRIDE}' not found on TMDb")
         return search_results[0]["id"]
+    # All 40 IDs verified against TMDb (search-by-name, exact match)
     actor_list = [
         31,     # Tom Hanks
         2888,   # Will Smith
-        1233,   # Johnny Depp
+        85,     # Johnny Depp
         1892,   # Matt Damon
-        190,    # Morgan Freeman
-        3061,   # Ryan Reynolds
+        192,    # Morgan Freeman
+        10859,  # Ryan Reynolds
         380,    # Robert De Niro
         6193,   # Leonardo DiCaprio
-        64,     # Brad Pitt
-        287,    # Bruce Willis
+        287,    # Brad Pitt
+        62,     # Bruce Willis
         2231,   # Samuel L. Jackson
-        11856,  # Nicolas Cage
-        113,    # Keanu Reeves
+        2963,   # Nicolas Cage
+        6384,   # Keanu Reeves
         3223,   # Robert Downey Jr.
         1245,   # Scarlett Johansson
-        10912,  # Emma Stone
-        54693,  # Emma Watson
-        17605,  # Jennifer Lawrence
-        5081,   # Meryl Streep
-        11701   # Denzel Washington
+        54693,  # Emma Stone
+        10990,  # Emma Watson
+        72129,  # Jennifer Lawrence
+        5064,   # Meryl Streep
+        5292,   # Denzel Washington
+        # --- 90s / 2000s era stars ---
+        500,    # Tom Cruise
+        3,      # Harrison Ford
+        1204,   # Julia Roberts
+        18277,  # Sandra Bullock
+        206,    # Jim Carrey
+        2157,   # Robin Williams
+        934,    # Russell Crowe
+        4173,   # Anthony Hopkins
+        1038,   # Jodie Foster
+        1158,   # Al Pacino
+        514,    # Jack Nicholson
+        2461,   # Mel Gibson
+        1100,   # Arnold Schwarzenegger
+        3896,   # Liam Neeson
+        204,    # Kate Winslet
+        819,    # Edward Norton
+        880,    # Ben Affleck
+        11701,  # Angelina Jolie
+        524,    # Natalie Portman
+        3894,   # Christian Bale
     ]
     day_of_year = datetime.datetime.now(EASTERN).timetuple().tm_yday
     return actor_list[day_of_year % len(actor_list)]
