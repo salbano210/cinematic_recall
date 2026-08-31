@@ -54,7 +54,14 @@ async def get_actor_filmography(actor_id: int):
             if m.get("release_date") and m["release_date"] <= today
         ]
 
-        # Filter 2: remove behind-the-scenes / making-of content by checking
+        # Filter 2: remove documentaries (TMDb genre 99) — they clutter the
+        # board with entries players don't think of as "real" movies.
+        no_docs = [
+            m for m in released
+            if 99 not in (m.get("genre_ids") or [])
+        ]
+
+        # Filter 3: remove behind-the-scenes / making-of content by checking
         # TMDb keywords for each movie (batched concurrently for speed)
         async def is_bts(movie):
             try:
@@ -69,8 +76,8 @@ async def get_actor_filmography(actor_id: int):
                 # On API error, keep the movie rather than silently drop it
                 return False
 
-        bts_flags = await asyncio.gather(*(is_bts(m) for m in released))
-        return [m for m, is_bts_movie in zip(released, bts_flags) if not is_bts_movie]
+        bts_flags = await asyncio.gather(*(is_bts(m) for m in no_docs))
+        return [m for m, is_bts_movie in zip(no_docs, bts_flags) if not is_bts_movie]
 
 async def get_movie_details(movie_id: int):
     """Get a movie's synopsis and large poster from TMDb (for the info popup)."""
