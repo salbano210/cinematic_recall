@@ -4,10 +4,15 @@ import './App.css';
 
 const STORAGE_KEY = 'cinematic_recall_state';
 
-// YYYY-MM-DD for today, used to detect "same day" persistence
+// YYYY-MM-DD for "today" in US Eastern time, matching the backend's daily
+// rotation schedule (actors change at midnight Eastern).
 const getTodayString = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date());
 };
 
 const getTitleClass = (title) => {

@@ -19,6 +19,10 @@ from dotenv import load_dotenv
 import os
 import datetime
 import re
+from zoneinfo import ZoneInfo
+
+# All "daily" logic (rotation, caching) rolls over at midnight US Eastern
+EASTERN = ZoneInfo("America/New_York")
 
 load_dotenv()
 
@@ -60,7 +64,7 @@ async def read_root():
 _cache = {}  # actor_id -> {"date": "YYYY-MM-DD", "movies": [...], "details": {...}}
 
 def _cache_key_date():
-    return datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    return datetime.datetime.now(EASTERN).strftime("%Y-%m-%d")
 
 async def get_daily_actor_id() -> int:
     """Resolve today's actor ID (override or rotation) — shared by /daily-actor and warm-up."""
@@ -94,7 +98,7 @@ async def get_daily_actor_id() -> int:
         5081,   # Meryl Streep
         11701   # Denzel Washington
     ]
-    day_of_year = datetime.datetime.utcnow().timetuple().tm_yday
+    day_of_year = datetime.datetime.now(EASTERN).timetuple().tm_yday
     return actor_list[day_of_year % len(actor_list)]
 
 async def warm_daily_cache():
