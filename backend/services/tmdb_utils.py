@@ -10,14 +10,30 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p"
 
-# Standard TMDb keywords that indicate behind-the-scenes / making-of content
+# Standard TMDb keywords that indicate behind-the-scenes / non-feature content
 BTS_KEYWORDS = {
     "behind the scenes",
     "making of",
     "making-of",
     "featurette",
     "behind the camera",
+    "stand-up",
+    "stand-up comedy",
+    "roast",
+    "talk show",
+    "concert",
+    "tv special",
 }
+
+# TMDb genre IDs that aren't feature films players think of as "real" movies
+NON_FEATURE_GENRES = {
+    99,      # Documentary
+    10770,   # TV Movie
+}
+
+# Minimum runtime (minutes) to count as a real feature film — filters out
+# shorts, specials, and streaming variety shows that are miscategorized
+MIN_FEATURE_RUNTIME = 60
 
 async def search_actor_by_name(name: str):
     url = f"{TMDB_BASE_URL}/search/person"
@@ -54,30 +70,38 @@ async def get_actor_filmography(actor_id: int):
             if m.get("release_date") and m["release_date"] <= today
         ]
 
-        # Filter 2: remove documentaries (TMDb genre 99) — they clutter the
-        # board with entries players don't think of as "real" movies.
-        no_docs = [
-            m for m in released
-            if 99 not in (m.get("genre_ids") or [])
-        ]
-
-        # Filter 3: remove behind-the-scenes / making-of content by checking
-        # TMDb keywords for each movie (batched concurrently for speed)
-        async def is_bts(movie):
+        # Filter 2: remove non-feature content. One /movie/{id} call per film
+        # (batched concurrently) gives us full genres, runtime, and keywords —
+        # much stronger signals than the genre_ids on the credits response,
+        # which often miscategorize specials (e.g. 'The Roast of Tom Brady').
+        async def is_feature(movie):
             try:
                 resp = await client.get(
-                    f"{TMDB_BASE_URL}/movie/{movie['id']}/keywords",
-                    params={"api_key": TMDB_API_KEY}
+                    f"{TMDB_BASE_URL}/movie/{movie['id']}",
+                    params={"api_key": TMDB_API_KEY, "append_to_response": "keywords"}
                 )
                 resp.raise_for_status()
-                keywords = resp.json().get("keywords", [])
-                return any(k["name"].lower() in BTS_KEYWORDS for k in keywords)
+                details = resp.json()
+
+                genre_ids = {g["id"] for g in details.get("genres", [])}
+                if genre_ids & NON_FEATURE_GENRES:
+                    return False
+
+                runtime = details.get("runtime") or 0
+                if runtime and runtime < MIN_FEATURE_RUNTIME:
+                    return False
+
+                keywords = [k["name"].lower() for k in details.get("keywords", {}).get("keywords", [])]
+                if any(k in BTS_KEYWORDS for k in keywords):
+                    return False
+
+                return True
             except Exception:
                 # On API error, keep the movie rather than silently drop it
-                return False
+                return True
 
-        bts_flags = await asyncio.gather(*(is_bts(m) for m in no_docs))
-        return [m for m, is_bts_movie in zip(no_docs, bts_flags) if not is_bts_movie]
+        feature_flags = await asyncio.gather(*(is_feature(m) for m in released))
+        return [m for m, is_feature_movie in zip(released, feature_flags) if is_feature_movie]
 
 async def get_movie_details(movie_id: int):
     """Get a movie's synopsis and large poster from TMDb (for the info popup)."""
