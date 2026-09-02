@@ -115,7 +115,7 @@ cinematic_recall/
 - 📅 **Daily Actor Rotation**: A new featured actor every day at midnight US Eastern, drawn from a verified 40-actor list of cinema's biggest stars (heavy on the 80s–2000s era). No scheduler needed — the board is derived from the date.
 - 🔧 **No-Code Actor Override**: Force a specific actor for a day by setting `ACTOR_OVERRIDE` (TMDb ID or name) in the backend's environment — changes take effect on the next deploy without touching code.
 - 🎯 **Deterministic Daily Board**: The full filmography is ranked by popularity with a stable tiebreak, so every player gets the identical board all day — and it survives server restarts and deploys.
-- 🚫 **Curated Filmography**: Documentaries, TV movies, shorts (<60 min), low-vote obscurities, making-ofs, roast/variety specials, and other non-feature content are filtered out, so the board only contains "real" movies.
+- 🚫 **Curated Filmography**: Documentaries, TV movies, shorts (<60 min), making-ofs, roast/variety specials, untagged tribute/TV-event entries, and other non-feature content are filtered out, so the board only contains "real" movies.
 - 🔤 **Fuzzy String Matching**: Normalization + variant matching recognizes titles despite typos, punctuation differences, number words vs. digits, roman numerals, and common abbreviations of long titles.
 - 💾 **Progress Persistence**: Game state is saved to `localStorage` and restored on reload; the server itself is stateless, so deploys never interrupt an in-progress game.
 - ⚡ **Cold-Start Warm-Up**: The day's board is pre-fetched in the background when the site loads, hiding TMDb latency (and Render free-tier cold starts) behind the start screen.

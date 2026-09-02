@@ -1,5 +1,6 @@
 import os
 import asyncio
+import re
 import httpx
 from datetime import date
 from dotenv import load_dotenv
@@ -35,10 +36,12 @@ NON_FEATURE_GENRES = {
 # shorts, specials, and streaming variety shows that are miscategorized
 MIN_FEATURE_RUNTIME = 60
 
-# TMDb vote floor: entries below this are untagged specials, tributes, and
-# obscurities nobody could guess (e.g. 'Betty White's 90th Birthday...' has
-# 1 vote). Real feature films from famous actors reliably have 30+ votes.
-MIN_VOTE_COUNT = 10
+# Title words that mark TV specials/tributes — only applied to entries with
+# no genre metadata at all (untagged TMDb entries like "Betty White's 90th
+# Birthday: A Tribute..."). Real films carry genres, so they're unaffected.
+NON_FEATURE_TITLE_PATTERN = re.compile(
+    r"\b(tribute|birthday|retrospective|documentary|biography|commemorat\w*|anniversary special)\b"
+)
 
 async def search_actor_by_name(name: str):
     url = f"{TMDB_BASE_URL}/search/person"
@@ -80,11 +83,6 @@ async def get_actor_filmography(actor_id: int):
         # much stronger signals than the genre_ids on the credits response,
         # which often miscategorize specials (e.g. 'The Roast of Tom Brady').
         async def is_feature(movie):
-            # Vote floor first — it uses data already in the credits response,
-            # so obviously-junk entries skip the per-movie API call entirely.
-            if (movie.get("vote_count") or 0) < MIN_VOTE_COUNT:
-                return False
-
             try:
                 resp = await client.get(
                     f"{TMDB_BASE_URL}/movie/{movie['id']}",
@@ -93,7 +91,14 @@ async def get_actor_filmography(actor_id: int):
                 resp.raise_for_status()
                 details = resp.json()
 
-                genre_ids = {g["id"] for g in details.get("genres", [])}
+                genres = details.get("genres", [])
+                genre_ids = {g["id"] for g in genres}
+
+                # Untagged entries (no genre metadata at all) with telltale
+                # special/tribute titles are TV events, not movies.
+                if not genres and NON_FEATURE_TITLE_PATTERN.search(movie.get("title", "").lower()):
+                    return False
+
                 if genre_ids & NON_FEATURE_GENRES:
                     return False
 
