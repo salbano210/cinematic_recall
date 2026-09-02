@@ -35,6 +35,11 @@ NON_FEATURE_GENRES = {
 # shorts, specials, and streaming variety shows that are miscategorized
 MIN_FEATURE_RUNTIME = 60
 
+# TMDb vote floor: entries below this are untagged specials, tributes, and
+# obscurities nobody could guess (e.g. 'Betty White's 90th Birthday...' has
+# 1 vote). Real feature films from famous actors reliably have 30+ votes.
+MIN_VOTE_COUNT = 10
+
 async def search_actor_by_name(name: str):
     url = f"{TMDB_BASE_URL}/search/person"
     params = {
@@ -75,6 +80,11 @@ async def get_actor_filmography(actor_id: int):
         # much stronger signals than the genre_ids on the credits response,
         # which often miscategorize specials (e.g. 'The Roast of Tom Brady').
         async def is_feature(movie):
+            # Vote floor first — it uses data already in the credits response,
+            # so obviously-junk entries skip the per-movie API call entirely.
+            if (movie.get("vote_count") or 0) < MIN_VOTE_COUNT:
+                return False
+
             try:
                 resp = await client.get(
                     f"{TMDB_BASE_URL}/movie/{movie['id']}",
